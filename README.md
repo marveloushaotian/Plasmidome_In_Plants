@@ -2,6 +2,8 @@
 
 Large-scale studies on the plant microbiome and plasmidome
 
+Here is the analytical workflow for the this project, which could also be used for all plasmidome related studies.
+
 ## Project Structure
 
 ```
