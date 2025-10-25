@@ -48,7 +48,11 @@ params.mobsuite_db = null  // Optional: path to MOB-suite database if not using 
 // EggNOG parameters
 params.eggnog_db = "/dev/shm/eggnog_db/"
 params.run_eggnog = true                    // Enable EggNOG functional annotation
-params.eggnog_protein_source = "prodigal"   // Options: "prodigal" (default, faster) or "prokka" (more detailed) 
+params.eggnog_protein_source = "prodigal"   // Options: "prodigal" (default, faster) or "prokka" (more detailed)
+
+// Defense systems merger parameters
+params.run_defense_merger = false           // Enable defense systems merger (PADLOC + DefenseFinder + CCTyper)
+params.defense_mapping_file = null          // Path to Defense Systems Name mapping file (Excel format) 
 
 // ---------------- Include modules ----------------
 include { ASSEMBLY            } from './modules/assembly'
@@ -73,6 +77,7 @@ include { PADLOC_ANNOTATE } from './modules/padloc'
 include { DEFENSEFINDER_ANNOTATE } from './modules/defensefinder'
 include { CCTYPER_ANNOTATE } from './modules/cctyper'
 include { AMRFINDER_ANNOTATE } from './modules/amrfinder'
+include { COLLECT_GFF_FILES; COLLECT_PADLOC_RESULTS; COLLECT_DEFENSEFINDER_RESULTS; COLLECT_CCTYPER_RESULTS; MERGE_DEFENSE_SYSTEMS; DEFENSE_SUMMARY } from './modules/defense_merger'
 
 // ---------------- Workflow ----------------
 workflow {
@@ -435,6 +440,64 @@ workflow {
         EGGNOG_ANNOTATION( EGGNOG_DIAMOND.out.diamond_results, eggnog_db_ch )
     } else {
         println "[INFO] EggNOG annotation is disabled (set params.run_eggnog=true to enable)"
+    }
+
+    // ========================================
+    // 20) Merge defense systems annotations (optional)
+    //     Combines results from PADLOC, DefenseFinder, and CCTyper
+    //     Requires: Defense Systems Name mapping file
+    // ========================================
+    if (params.run_defense_merger && params.defense_mapping_file) {
+        println "[INFO] Merging defense systems annotations from PADLOC, DefenseFinder, and CCTyper"
+
+        // Collect GFF files from Prokka
+        prokka_gff_files = PROKKA_ANNOTATE.out.gff
+            .map { id, gff -> gff }
+            .collect()
+
+        COLLECT_GFF_FILES( prokka_gff_files )
+
+        // Collect PADLOC results
+        padloc_results = PADLOC_ANNOTATE.out.results
+            .map { id, tsv -> tsv }
+            .collect()
+
+        COLLECT_PADLOC_RESULTS( padloc_results )
+
+        // Collect DefenseFinder results
+        defensefinder_results = DEFENSEFINDER_ANNOTATE.out.systems
+            .map { id, tsv -> tsv }
+            .collect()
+
+        COLLECT_DEFENSEFINDER_RESULTS( defensefinder_results )
+
+        // Collect CCTyper results
+        cctyper_results = CCTYPER_ANNOTATE.out.operons
+            .map { id, tsv -> tsv }
+            .collect()
+
+        COLLECT_CCTYPER_RESULTS( cctyper_results )
+
+        // Load mapping file
+        mapping_file_ch = Channel.fromPath(params.defense_mapping_file, checkIfExists: true)
+
+        // Merge all defense systems annotations
+        MERGE_DEFENSE_SYSTEMS(
+            COLLECT_GFF_FILES.out.merged_gff,
+            COLLECT_PADLOC_RESULTS.out.merged_padloc,
+            COLLECT_DEFENSEFINDER_RESULTS.out.merged_defensefinder,
+            COLLECT_CCTYPER_RESULTS.out.merged_cctyper,
+            mapping_file_ch
+        )
+
+        // Generate summary report
+        DEFENSE_SUMMARY( MERGE_DEFENSE_SYSTEMS.out.defense_summary )
+
+    } else if (params.run_defense_merger && !params.defense_mapping_file) {
+        println "[WARN] Defense merger enabled but mapping file not specified. Skipping defense systems merger."
+        println "[WARN] Set --defense_mapping_file to enable this feature."
+    } else {
+        println "[INFO] Defense systems merger is disabled (set params.run_defense_merger=true to enable)"
     }
 }
 
