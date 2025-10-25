@@ -3,9 +3,19 @@ nextflow.enable.dsl=2
 
 // ---------------- Parameters ----------------
 params.project_id        = "TEST"                           // Project identifier for output organization
+
+// === NEW: Input mode selection ===
+params.input_mode        = "labeled"                        // "raw" (from fastq) or "labeled" (from labeled fasta + qa.tsv)
+
+// === For raw mode (original pipeline) ===
 params.raw_reads         = "Raw_Reads"                      // Directory containing paired-end FASTQ files
-params.outdir            = "Results/${params.project_id}"   // Output directory
 params.adapters          = "/scratch/miniforge3/envs/anvio-8/share/bbmap/resources/adapters.fa"
+
+// === For labeled mode (NEW) ===
+params.labeled_fastas    = "PREPARED_FROM_TK_ALL_LAEBLED"   // Directory containing labeled FASTA files
+params.existing_qa       = "qa.tsv"                         // Path to existing CheckM qa.tsv file
+
+params.outdir            = "Results/${params.project_id}"   // Output directory
 
 // Sample grouping for separate phylogenetic trees
 params.sample_groups     = null                  // Path to tab-separated file: Sample_ID	Group_Name (required when run_grouped_trees=true)
@@ -67,127 +77,199 @@ include { AMRFINDER_ANNOTATE } from './modules/amrfinder'
 // ---------------- Workflow ----------------
 workflow {
 
-    // 0) Build input channels
-    reads_ch = Channel
-        .fromFilePairs("${params.raw_reads}/*_{1,2}.fastq.gz")
-        .map { sid, files -> tuple(sid.toString(), files) }
-
+    // Common database channels
     eggnog_db_ch = Channel.value( params.eggnog_db )
-    adapters_ch = Channel.value( file(params.adapters) )
-    genomad_db_ch = Channel.value( params.genomad_db )
     gtdb_db_ch    = Channel.value( params.gtdbtk_db )
 
-    // 1) Assembly
-    //    ASSEMBLY expects: tuple(id, [R1,R2]), path(adapters)
-    ASSEMBLY( reads_ch, adapters_ch )
-    // ASSEMBLY.out.contigs => tuple(id, path_contigs)
-
-    // 2) Length + coverage filter
-    //    QUALITY_FILTER expects: tuple(id, fasta, reads)
-    quality_in_ch = ASSEMBLY.out.contigs.join( reads_ch )
-    QUALITY_FILTER( quality_in_ch )
-    // QUALITY_FILTER.out.filtered_fasta => tuple(id, path_filtered_fasta)
-
-    // 2.5) Filter out empty filtered fastas (samples with no contigs passing QC)
-    //      This prevents downstream errors in GENOMAD, LABEL_CONTIGS, and CHECKM
-    QUALITY_FILTER.out.filtered_fasta
-        .branch { sample_id, fasta ->
-            non_empty: fasta.size() > 0
-            empty: true
-        }
-        .set { filtered_results }
-
-    // Log samples with empty filtered fastas
-    filtered_results.empty
-        .subscribe { sample_id, fasta ->
-            log.warn "⚠️  Sample ${sample_id}: filtered fasta is empty (no contigs passed QC thresholds: length>=${params.length_threshold}, coverage>=${params.coverage_threshold}). Skipping all downstream analyses for this sample."
-        }
-
-    // Use non-empty samples for downstream analyses
-    filtered_fasta_for_downstream = filtered_results.non_empty
-
-    // 3) GeNomad (on filtered contigs)
-    //    GENOMAD expects: tuple(id, fasta), val(genomad_db)
-    GENOMAD( filtered_fasta_for_downstream, genomad_db_ch )
-    // GENOMAD.out.summary => tuple(id, path_genomad_dir)
-
-    // 4) Label contigs using GeNomad results
-    //    LABEL_CONTIGS expects: tuple(id, fasta, genomad_dir)
-    GENOMAD.out.summary
-        .join( filtered_fasta_for_downstream )                     // (id, genomad_dir, fasta)
-        .map { id, genomad_dir, fasta -> tuple(id, fasta, genomad_dir) }
-        .set { label_in_ch }
-
-    LABEL_CONTIGS( label_in_ch )
-    // LABEL_CONTIGS.out.labeled_fasta => tuple(id, labeled_fasta)
-
     // ========================================
-    // 5-7) CheckM Quality Assessment
-    //      Two modes available:
-    //      - single: Run CheckM per sample (incremental, recommended for large-scale)
-    //      - batch:  Run CheckM in batch (legacy, faster for small datasets)
+    // CONDITIONAL WORKFLOW EXECUTION
     // ========================================
-    
-    if (params.checkm_mode == "single") {
-        // === Single-sample mode (incremental) ===
-        // Each sample runs CheckM independently
-        // Advantages: 
-        //   - New samples don't trigger re-running old samples
-        //   - Better for incremental analysis
-        //   - Nextflow cache works per sample
-        
-        CHECKM_SINGLE( LABEL_CONTIGS.out.labeled_fasta )
-        
-        // Collect all QA results
-        qa_all_list = CHECKM_SINGLE.out.qa_all
-            .map { id, qa -> qa }
-            .collect()
-        
-        qa_chro_list = CHECKM_SINGLE.out.qa_chro
-            .map { id, qa -> qa }
-            .collect()
-        
-        // Merge results from all samples
-        MERGE_CHECKM_RESULTS( qa_all_list, qa_chro_list )
-        
-        // Set output channels for downstream
-        checkm_qa_all = MERGE_CHECKM_RESULTS.out.qa_all
-        checkm_qa_chro = MERGE_CHECKM_RESULTS.out.qa_chro
-        
+
+    if (params.input_mode == "labeled") {
+        // ============================================
+        // NEW MODE: Start from labeled FASTA + qa.tsv
+        // ============================================
+        log.info """
+        =====================================
+        Running in LABELED mode
+        =====================================
+        Input: Labeled FASTA files from ${params.labeled_fastas}
+        QA file: ${params.existing_qa}
+
+        Skipping steps:
+        - Assembly
+        - Quality Filter
+        - GeNomad
+        - Label Contigs
+        - CheckM
+
+        Starting from: HQ genome filtering
+        =====================================
+        """.stripIndent()
+
+        // 1) Load labeled FASTA files
+        //    Create channel: tuple(sample_id, fasta_file)
+        labeled_genomes_ch = Channel
+            .fromPath("${params.labeled_fastas}/*.fasta")
+            .map { fasta ->
+                def sample_id = fasta.baseName  // e.g., "sample1" from "sample1.fasta"
+                tuple(sample_id, fasta)
+            }
+
+        // 2) Use existing qa.tsv file
+        //    Create channel from existing CheckM QA file
+        checkm_qa_all = Channel.fromPath(params.existing_qa, checkIfExists: true)
+
+        // 3) Build HQ/LQ lists from existing QA file
+        FILTER_HQ_GENOMES( checkm_qa_all )
+
     } else {
-        // === Batch mode (legacy) ===
-        // All samples run CheckM together
-        // Advantages:
-        //   - Slightly faster for small datasets
-        //   - Single CheckM invocation
-        
-        labeled_fasta_list = LABEL_CONTIGS.out.labeled_fasta
-            .map { id, f -> f }
-            .collect()
-        
-        PREP_CHECKM_INPUTS( labeled_fasta_list )
-        
-        CHECKM_BATCH(
-            PREP_CHECKM_INPUTS.out.bins_all_dir,
-            PREP_CHECKM_INPUTS.out.bins_chro_dir
-        )
-        
-        // Set output channels for downstream
-        checkm_qa_all = CHECKM_BATCH.out.qa_all
-        checkm_qa_chro = CHECKM_BATCH.out.qa_chro
-    }
-    
-    // 8) Build HQ/LQ lists from QA tables
-    checkm_qa_all
-        .mix( checkm_qa_chro )
-        .collect()
-        .set { all_qa_files_ch }
+        // ============================================
+        // ORIGINAL MODE: Start from raw FASTQ reads
+        // ============================================
+        log.info """
+        =====================================
+        Running in RAW mode (original pipeline)
+        =====================================
+        Input: Raw reads from ${params.raw_reads}
 
-    FILTER_HQ_GENOMES( all_qa_files_ch )
+        Running full pipeline:
+        - Assembly
+        - Quality Filter
+        - GeNomad
+        - Label Contigs
+        - CheckM
+        - All downstream analyses
+        =====================================
+        """.stripIndent()
+
+        // 0) Build input channels
+        reads_ch = Channel
+            .fromFilePairs("${params.raw_reads}/*_{1,2}.fastq.gz")
+            .map { sid, files -> tuple(sid.toString(), files) }
+
+        adapters_ch = Channel.value( file(params.adapters) )
+        genomad_db_ch = Channel.value( params.genomad_db )
+
+        // 1) Assembly
+        //    ASSEMBLY expects: tuple(id, [R1,R2]), path(adapters)
+        ASSEMBLY( reads_ch, adapters_ch )
+        // ASSEMBLY.out.contigs => tuple(id, path_contigs)
+
+        // 2) Length + coverage filter
+        //    QUALITY_FILTER expects: tuple(id, fasta, reads)
+        quality_in_ch = ASSEMBLY.out.contigs.join( reads_ch )
+        QUALITY_FILTER( quality_in_ch )
+        // QUALITY_FILTER.out.filtered_fasta => tuple(id, path_filtered_fasta)
+
+        // 2.5) Filter out empty filtered fastas (samples with no contigs passing QC)
+        //      This prevents downstream errors in GENOMAD, LABEL_CONTIGS, and CHECKM
+        QUALITY_FILTER.out.filtered_fasta
+            .branch { sample_id, fasta ->
+                non_empty: fasta.size() > 0
+                empty: true
+            }
+            .set { filtered_results }
+
+        // Log samples with empty filtered fastas
+        filtered_results.empty
+            .subscribe { sample_id, fasta ->
+                log.warn "⚠️  Sample ${sample_id}: filtered fasta is empty (no contigs passed QC thresholds: length>=${params.length_threshold}, coverage>=${params.coverage_threshold}). Skipping all downstream analyses for this sample."
+            }
+
+        // Use non-empty samples for downstream analyses
+        filtered_fasta_for_downstream = filtered_results.non_empty
+
+        // 3) GeNomad (on filtered contigs)
+        //    GENOMAD expects: tuple(id, fasta), val(genomad_db)
+        GENOMAD( filtered_fasta_for_downstream, genomad_db_ch )
+        // GENOMAD.out.summary => tuple(id, path_genomad_dir)
+
+        // 4) Label contigs using GeNomad results
+        //    LABEL_CONTIGS expects: tuple(id, fasta, genomad_dir)
+        GENOMAD.out.summary
+            .join( filtered_fasta_for_downstream )                     // (id, genomad_dir, fasta)
+            .map { id, genomad_dir, fasta -> tuple(id, fasta, genomad_dir) }
+            .set { label_in_ch }
+
+        LABEL_CONTIGS( label_in_ch )
+        // LABEL_CONTIGS.out.labeled_fasta => tuple(id, labeled_fasta)
+
+        // ========================================
+        // 5-7) CheckM Quality Assessment
+        //      Two modes available:
+        //      - single: Run CheckM per sample (incremental, recommended for large-scale)
+        //      - batch:  Run CheckM in batch (legacy, faster for small datasets)
+        // ========================================
+
+        if (params.checkm_mode == "single") {
+            // === Single-sample mode (incremental) ===
+            // Each sample runs CheckM independently
+            // Advantages:
+            //   - New samples don't trigger re-running old samples
+            //   - Better for incremental analysis
+            //   - Nextflow cache works per sample
+
+            CHECKM_SINGLE( LABEL_CONTIGS.out.labeled_fasta )
+
+            // Collect all QA results
+            qa_all_list = CHECKM_SINGLE.out.qa_all
+                .map { id, qa -> qa }
+                .collect()
+
+            qa_chro_list = CHECKM_SINGLE.out.qa_chro
+                .map { id, qa -> qa }
+                .collect()
+
+            // Merge results from all samples
+            MERGE_CHECKM_RESULTS( qa_all_list, qa_chro_list )
+
+            // Set output channels for downstream
+            checkm_qa_all = MERGE_CHECKM_RESULTS.out.qa_all
+            checkm_qa_chro = MERGE_CHECKM_RESULTS.out.qa_chro
+
+        } else {
+            // === Batch mode (legacy) ===
+            // All samples run CheckM together
+            // Advantages:
+            //   - Slightly faster for small datasets
+            //   - Single CheckM invocation
+
+            labeled_fasta_list = LABEL_CONTIGS.out.labeled_fasta
+                .map { id, f -> f }
+                .collect()
+
+            PREP_CHECKM_INPUTS( labeled_fasta_list )
+
+            CHECKM_BATCH(
+                PREP_CHECKM_INPUTS.out.bins_all_dir,
+                PREP_CHECKM_INPUTS.out.bins_chro_dir
+            )
+
+            // Set output channels for downstream
+            checkm_qa_all = CHECKM_BATCH.out.qa_all
+            checkm_qa_chro = CHECKM_BATCH.out.qa_chro
+        }
+
+        // Use labeled_fasta from LABEL_CONTIGS for downstream
+        labeled_genomes_ch = LABEL_CONTIGS.out.labeled_fasta
+
+        // 8) Build HQ/LQ lists from QA tables
+        checkm_qa_all
+            .mix( checkm_qa_chro )
+            .collect()
+            .set { all_qa_files_ch }
+
+        FILTER_HQ_GENOMES( all_qa_files_ch )
+    }
+
+    // ========================================
+    // DOWNSTREAM ANALYSES (Common for both modes)
+    // ========================================
     // FILTER_HQ_GENOMES.out.hq_list => path("hq_genomes.txt")
 
     // ========================================
-    // 8) Create unified HQ genomes dataset
+    // Create unified HQ genomes dataset
     //    This is the SINGLE SOURCE for all HQ genome files
     //    All downstream analyses should reference this channel
     // ========================================
@@ -196,17 +278,25 @@ workflow {
         .map { it.trim() }
         .filter { it }
 
-    // Create HQ genomes channel based on CheckM mode
-    if (params.checkm_mode == "single") {
-        // In single mode, use labeled_fasta files directly
-        hq_genomes_ch = LABEL_CONTIGS.out.labeled_fasta
+    // Create HQ genomes channel based on input mode
+    if (params.input_mode == "labeled") {
+        // In labeled mode, filter labeled_genomes_ch by HQ IDs
+        hq_genomes_ch = labeled_genomes_ch
             .join( hq_ids_ch.map { id -> tuple(id, id) } )  // Keep only HQ samples
             .map { id, fasta, hq_id -> tuple(id, fasta) }
     } else {
-        // In batch mode, use PREP_CHECKM_INPUTS output
-        hq_genomes_ch = PREP_CHECKM_INPUTS.out.bins_all_dir
-            .combine( hq_ids_ch )                                          // (dir, id)
-            .map { dir, id -> tuple(id, file("${dir}/${id}.fasta")) }      // tuple(id, fasta)
+        // In raw mode, use original logic
+        if (params.checkm_mode == "single") {
+            // In single mode, use labeled_fasta files directly
+            hq_genomes_ch = labeled_genomes_ch
+                .join( hq_ids_ch.map { id -> tuple(id, id) } )  // Keep only HQ samples
+                .map { id, fasta, hq_id -> tuple(id, fasta) }
+        } else {
+            // In batch mode, use PREP_CHECKM_INPUTS output
+            hq_genomes_ch = PREP_CHECKM_INPUTS.out.bins_all_dir
+                .combine( hq_ids_ch )                                          // (dir, id)
+                .map { dir, id -> tuple(id, file("${dir}/${id}.fasta")) }      // tuple(id, fasta)
+        }
     }
     // hq_genomes_ch is now the unified channel: tuple(genome_id, fasta_file)
 
