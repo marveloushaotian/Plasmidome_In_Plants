@@ -453,12 +453,12 @@ workflow {
     // ========================================
     println "[INFO] Merging defense systems annotations from PADLOC, DefenseFinder, and CCTyper"
 
-    // Collect GFF files from Prokka
-    prokka_gff_files = PROKKA_ANNOTATE.out.gff
+    // Collect GFF files from Prodigal (defense tools use Prodigal annotations)
+    prodigal_gff_files = PRODIGAL_PREDICT.out.gff
         .map { id, gff -> gff }
         .collect()
 
-    COLLECT_GFF_FILES( prokka_gff_files )
+    COLLECT_GFF_FILES( prodigal_gff_files )
 
     // Collect PADLOC results
     padloc_results = PADLOC_ANNOTATE.out.results
@@ -468,21 +468,21 @@ workflow {
     COLLECT_PADLOC_RESULTS( padloc_results )
 
     // Collect DefenseFinder results
-    defensefinder_results = DEFENSEFINDER_ANNOTATE.out.systems
+    defensefinder_results = DEFENSEFINDER_ANNOTATE.out.results
         .map { id, tsv -> tsv }
         .collect()
 
     COLLECT_DEFENSEFINDER_RESULTS( defensefinder_results )
 
-    // Collect CCTyper results
-    cctyper_results = CCTYPER_ANNOTATE.out.operons
+    // Collect CCTyper results (cas_operons.tab files)
+    cctyper_results = CCTYPER_ANNOTATE.out.cas_operons
         .map { id, tsv -> tsv }
         .collect()
 
     COLLECT_CCTYPER_RESULTS( cctyper_results )
 
     // Load mapping file (fixed path in project root)
-    mapping_file_ch = Channel.fromPath("Defense_Systems_Name_List.xlsx", checkIfExists: true)
+    mapping_file_ch = Channel.fromPath("Defense Systems Name List.xlsx", checkIfExists: true)
 
     // Merge all defense systems annotations
     MERGE_DEFENSE_SYSTEMS(

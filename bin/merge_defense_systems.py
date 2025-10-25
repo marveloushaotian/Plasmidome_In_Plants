@@ -194,7 +194,7 @@ def main():
     padloc_df = pd.read_csv('final_padloc.tsv', sep='\t')
     defense_finder_df = pd.read_csv('final_defensefinder.tsv', sep='\t')
     cas_operons_df = pd.read_csv('final_cctyper.tsv', sep="\t")
-    defense_systems_mapping = load_mapping_file('Defense_Systems_Name_List.xlsx')
+    defense_systems_mapping = load_mapping_file('Defense Systems Name List.xlsx')
 
     print(f"[INFO] Loaded {len(all_gff_df)} GFF entries", file=sys.stderr)
     print(f"[INFO] Loaded {len(padloc_df)} PADLOC results", file=sys.stderr)
