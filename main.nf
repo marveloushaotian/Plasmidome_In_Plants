@@ -2,20 +2,18 @@
 nextflow.enable.dsl=2
 
 // ---------------- Parameters ----------------
-params.project_id        = "TEST"                           // Project identifier for output organization
-
-// === NEW: Input mode selection ===
+// === Input mode selection ===
 params.input_mode        = "labeled"                        // "raw" (from fastq) or "labeled" (from labeled fasta + qa.tsv)
 
 // === For raw mode (original pipeline) ===
 params.raw_reads         = "Raw_Reads"                      // Directory containing paired-end FASTQ files
 params.adapters          = "/scratch/miniforge3/envs/anvio-8/share/bbmap/resources/adapters.fa"
 
-// === For labeled mode (NEW) ===
+// === For labeled mode ===
 params.labeled_fastas    = "PREPARED_FROM_TK_ALL_LAEBLED"   // Directory containing labeled FASTA files
 params.existing_qa       = "qa.tsv"                         // Path to existing CheckM qa.tsv file
 
-params.outdir            = "Results/${params.project_id}"   // Output directory
+params.outdir            = "Results"                        // Output directory
 
 // Sample grouping for separate phylogenetic trees
 params.sample_groups     = null                  // Path to tab-separated file: Sample_ID	Group_Name (required when run_grouped_trees=true)
@@ -27,6 +25,9 @@ params.checkm_mode       = "single"              // "single" (incremental, recom
 
 params.genomad_db        = "/projects/somicrobiology/data/CRBC_CropMicrobiomeBacteria/ketao/genomad_db"
 params.gtdbtk_db         = "/projects/somicrobiology/data/CRBC_CropMicrobiomeBacteria/ketao/gtdbtk_db/release226"
+
+// Optional analyses
+params.run_gtdbtk        = false                 // Enable GTDB-Tk classification (disabled by default, very time-consuming)
 
 // Quality & QC thresholds (consumed in modules/config)
 params.length_threshold        = 1000
@@ -45,9 +46,9 @@ params.prokka_rfam = true
 // MOB-suite parameters
 params.mobsuite_db = null  // Optional: path to MOB-suite database if not using default
 
-// EggNOG parameters
+// EggNOG parameters (optional, disabled by default)
 params.eggnog_db = "/dev/shm/eggnog_db/"
-params.run_eggnog = true                    // Enable EggNOG functional annotation
+params.run_eggnog = false                   // Enable EggNOG functional annotation (disabled by default, time-consuming)
 params.eggnog_protein_source = "prodigal"   // Options: "prodigal" (default, faster) or "prokka" (more detailed) 
 
 // ---------------- Include modules ----------------
@@ -73,6 +74,7 @@ include { PADLOC_ANNOTATE } from './modules/padloc'
 include { DEFENSEFINDER_ANNOTATE } from './modules/defensefinder'
 include { CCTYPER_ANNOTATE } from './modules/cctyper'
 include { AMRFINDER_ANNOTATE } from './modules/amrfinder'
+include { COLLECT_GFF_FILES; COLLECT_PADLOC_RESULTS; COLLECT_DEFENSEFINDER_RESULTS; COLLECT_CCTYPER_RESULTS; MERGE_DEFENSE_SYSTEMS; DEFENSE_SUMMARY } from './modules/defense_merger'
 
 // ---------------- Workflow ----------------
 workflow {
@@ -301,15 +303,22 @@ workflow {
     // hq_genomes_ch is now the unified channel: tuple(genome_id, fasta_file)
 
     // ========================================
-    // 9) GTDB-Tk classification on HQ genomes (batch)
+    // 9) GTDB-Tk classification on HQ genomes (optional, disabled by default)
     //    Requires: list of FASTA files
+    //    Enable with: --run_gtdbtk true
     // ========================================
-    hq_fasta_list = hq_genomes_ch
-        .map { id, fasta -> fasta }
-        .collect()
+    if (params.run_gtdbtk) {
+        println "[INFO] GTDB-Tk classification enabled"
 
-    GTDBTK( hq_fasta_list, gtdb_db_ch )
-    // GTDBTK.out.alignments => path("gtdbtk_output/align")
+        hq_fasta_list = hq_genomes_ch
+            .map { id, fasta -> fasta }
+            .collect()
+
+        GTDBTK( hq_fasta_list, gtdb_db_ch )
+        // GTDBTK.out.alignments => path("gtdbtk_output/align")
+    } else {
+        println "[INFO] GTDB-Tk classification disabled (set --run_gtdbtk true to enable)"
+    }
 
     // ========================================
     // 10) MOB-suite analysis for HQ genomes
@@ -357,53 +366,53 @@ workflow {
     PADLOC_ANNOTATE( hq_genomes_ch )
 
     // ========================================
-    // 17) Filter alignments by HQ ids (for tree building)
-    //     Requires: GTDBTK alignments + HQ list + Group info
+    // 17-18) Phylogenetic tree construction (requires GTDB-Tk)
+    //        Only runs if params.run_gtdbtk = true
     // ========================================
 
-    // ========================================
-    // Tree construction modes:
-    // 1. Overall tree: all samples together (params.run_overall_tree = true)
-    // 2. Grouped trees: separate tree for each group (params.run_grouped_trees = true)
-    // 3. Both: run both overall and grouped trees
-    // ========================================
-    
-    if (params.run_overall_tree) {
-        // Original single tree construction for all samples
-        PHYLOGENY( GTDBTK.out.alignments, FILTER_HQ_GENOMES.out.hq_list )
-        IQTREE( PHYLOGENY.out.filtered_alignments )
-    }
-    
-    if (params.run_grouped_trees) {
-        // Validate that sample_groups file is provided
-        if (params.sample_groups == null) {
-            error "ERROR: params.sample_groups must be specified when params.run_grouped_trees = true"
+    if (params.run_gtdbtk) {
+        // Tree construction modes:
+        // 1. Overall tree: all samples together (params.run_overall_tree = true)
+        // 2. Grouped trees: separate tree for each group (params.run_grouped_trees = true)
+        // 3. Both: run both overall and grouped trees
+
+        if (params.run_overall_tree) {
+            // Original single tree construction for all samples
+            PHYLOGENY( GTDBTK.out.alignments, FILTER_HQ_GENOMES.out.hq_list )
+            IQTREE( PHYLOGENY.out.filtered_alignments )
         }
-        
-        // Load sample grouping information only when needed
-        // Creates tuples: (sample_id, group_name)
-        sample_groups_pairs = Channel.fromPath( params.sample_groups, checkIfExists: true )
-            .splitCsv( header: false, sep: '\t', comment: '#' )
-            .filter { row -> row.size() >= 2 && row[0].trim() && row[1].trim() }  // Filter empty lines
-            .map { row -> tuple(row[0].trim(), row[1].trim()) }  // (sample_id, group_name)
-        
-        // Create channel combining HQ genomes with their group information
-        // Join HQ genome IDs with their groups, then group by group_name
-        hq_genomes_with_groups_ch = hq_ids_ch
-            .combine( sample_groups_pairs )  // (genome_id, sample_id, group_name)
-            .filter { genome_id, sample_id, group_name -> genome_id == sample_id }  // Keep only matching IDs
-            .map { genome_id, sample_id, group_name -> tuple(group_name, genome_id) }  // (group_name, genome_id)
-            .groupTuple()  // Group genome IDs by group name: (group_name, [genome_id1, genome_id2, ...])
-        
-        // Grouped tree construction: separate trees for each group
-        PHYLOGENY_GROUPED(
-            GTDBTK.out.alignments,
-            FILTER_HQ_GENOMES.out.hq_list,
-            hq_genomes_with_groups_ch
-        )
 
-        // IQ-TREE for each group
-        IQTREE_GROUPED( PHYLOGENY_GROUPED.out.filtered_alignments )
+        if (params.run_grouped_trees) {
+            // Validate that sample_groups file is provided
+            if (params.sample_groups == null) {
+                error "ERROR: params.sample_groups must be specified when params.run_grouped_trees = true"
+            }
+
+            // Load sample grouping information only when needed
+            // Creates tuples: (sample_id, group_name)
+            sample_groups_pairs = Channel.fromPath( params.sample_groups, checkIfExists: true )
+                .splitCsv( header: false, sep: '\t', comment: '#' )
+                .filter { row -> row.size() >= 2 && row[0].trim() && row[1].trim() }  // Filter empty lines
+                .map { row -> tuple(row[0].trim(), row[1].trim()) }  // (sample_id, group_name)
+
+            // Create channel combining HQ genomes with their group information
+            // Join HQ genome IDs with their groups, then group by group_name
+            hq_genomes_with_groups_ch = hq_ids_ch
+                .combine( sample_groups_pairs )  // (genome_id, sample_id, group_name)
+                .filter { genome_id, sample_id, group_name -> genome_id == sample_id }  // Keep only matching IDs
+                .map { genome_id, sample_id, group_name -> tuple(group_name, genome_id) }  // (group_name, genome_id)
+                .groupTuple()  // Group genome IDs by group name: (group_name, [genome_id1, genome_id2, ...])
+
+            // Grouped tree construction: separate trees for each group
+            PHYLOGENY_GROUPED(
+                GTDBTK.out.alignments,
+                FILTER_HQ_GENOMES.out.hq_list,
+                hq_genomes_with_groups_ch
+            )
+
+            // IQ-TREE for each group
+            IQTREE_GROUPED( PHYLOGENY_GROUPED.out.filtered_alignments )
+        }
     }
 
     // ========================================
@@ -436,6 +445,56 @@ workflow {
     } else {
         println "[INFO] EggNOG annotation is disabled (set params.run_eggnog=true to enable)"
     }
+
+    // ========================================
+    // 20) Merge defense systems annotations (always enabled)
+    //     Combines results from PADLOC, DefenseFinder, and CCTyper
+    //     Mapping file: Defense_Systems_Name_List.xlsx (in project root)
+    // ========================================
+    println "[INFO] Merging defense systems annotations from PADLOC, DefenseFinder, and CCTyper"
+
+    // Collect GFF files from Prokka
+    prokka_gff_files = PROKKA_ANNOTATE.out.gff
+        .map { id, gff -> gff }
+        .collect()
+
+    COLLECT_GFF_FILES( prokka_gff_files )
+
+    // Collect PADLOC results
+    padloc_results = PADLOC_ANNOTATE.out.results
+        .map { id, tsv -> tsv }
+        .collect()
+
+    COLLECT_PADLOC_RESULTS( padloc_results )
+
+    // Collect DefenseFinder results
+    defensefinder_results = DEFENSEFINDER_ANNOTATE.out.systems
+        .map { id, tsv -> tsv }
+        .collect()
+
+    COLLECT_DEFENSEFINDER_RESULTS( defensefinder_results )
+
+    // Collect CCTyper results
+    cctyper_results = CCTYPER_ANNOTATE.out.operons
+        .map { id, tsv -> tsv }
+        .collect()
+
+    COLLECT_CCTYPER_RESULTS( cctyper_results )
+
+    // Load mapping file (fixed path in project root)
+    mapping_file_ch = Channel.fromPath("Defense_Systems_Name_List.xlsx", checkIfExists: true)
+
+    // Merge all defense systems annotations
+    MERGE_DEFENSE_SYSTEMS(
+        COLLECT_GFF_FILES.out.merged_gff,
+        COLLECT_PADLOC_RESULTS.out.merged_padloc,
+        COLLECT_DEFENSEFINDER_RESULTS.out.merged_defensefinder,
+        COLLECT_CCTYPER_RESULTS.out.merged_cctyper,
+        mapping_file_ch
+    )
+
+    // Generate summary report
+    DEFENSE_SUMMARY( MERGE_DEFENSE_SYSTEMS.out.defense_summary )
 }
 
 workflow.onComplete {
