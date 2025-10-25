@@ -475,14 +475,14 @@ workflow {
     COLLECT_DEFENSEFINDER_RESULTS( defensefinder_results )
 
     // Collect CCTyper results
-    cctyper_results = CCTYPER_ANNOTATE.out.operons
+    cctyper_results = CCTYPER_ANNOTATE.out.results
         .map { id, tsv -> tsv }
         .collect()
 
     COLLECT_CCTYPER_RESULTS( cctyper_results )
 
     // Load mapping file (fixed path in project root)
-    mapping_file_ch = Channel.fromPath("Defense_Systems_Name_List.xlsx", checkIfExists: true)
+    mapping_file_ch = Channel.fromPath("Defense Systems Name List.xlsx", checkIfExists: true)
 
     // Merge all defense systems annotations
     MERGE_DEFENSE_SYSTEMS(
