@@ -17,14 +17,14 @@ process FILTER_HQ_GENOMES {
     > lq_genomes.txt
     > quality_summary.txt
     
-    # 只处理 qa_all 文件（支持 qa_all.tsv 和 qa_all_merged.tsv），避免重复
+    # 处理所有 .tsv 文件（支持 qa.tsv, qa_all.tsv 和 qa_all_merged.tsv）
     for qa_file in ${qa_files}; do
-      if [[ "\$qa_file" == *"qa_all"*".tsv" ]]; then
+      if [[ "\$qa_file" == *.tsv ]]; then
         awk -v comp_thresh=${params.completeness_threshold} -v cont_thresh=${params.contamination_threshold} '
-          NF > 20 && \$1 !~ /^[-]+\$/ && \$1 != "Bin" && \$1 !~ /^[[:space:]]*\$/ {
+          NF > 10 && \$1 !~ /^[-]+\$/ && \$1 != "Bin" && \$1 !~ /^[[:space:]]*\$/ && \$1 !~ /INFO/ {
             genome=\$1
-            completeness=\$7
-            contamination=\$8
+            completeness=\$13
+            contamination=\$14
             # 调试输出
             printf "DEBUG: %s comp=%s cont=%s\\n", genome, completeness, contamination
             # 强制数值转换
