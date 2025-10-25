@@ -23,8 +23,8 @@ process FILTER_HQ_GENOMES {
         awk -v comp_thresh=${params.completeness_threshold} -v cont_thresh=${params.contamination_threshold} '
           NF > 10 && \$1 !~ /^[-]+\$/ && \$1 != "Bin" && \$1 !~ /^[[:space:]]*\$/ && \$1 !~ /INFO/ {
             genome=\$1
-            completeness=\$12
-            contamination=\$13
+            completeness=\$13
+            contamination=\$14
             # 调试输出
             printf "DEBUG: %s comp=%s cont=%s\\n", genome, completeness, contamination
             # 强制数值转换
