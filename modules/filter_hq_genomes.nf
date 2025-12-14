@@ -17,7 +17,6 @@ process FILTER_HQ_GENOMES {
     > lq_genomes.txt
     > quality_summary.txt
     
-    # 处理所有 .tsv 文件（支持 qa.tsv, qa_all.tsv 和 qa_all_merged.tsv）
     for qa_file in ${qa_files}; do
       if [[ "\$qa_file" == *.tsv ]]; then
         awk -v comp_thresh=${params.completeness_threshold} -v cont_thresh=${params.contamination_threshold} '
@@ -25,9 +24,7 @@ process FILTER_HQ_GENOMES {
             genome=\$1
             completeness=\$13
             contamination=\$14
-            # 调试输出
             printf "DEBUG: %s comp=%s cont=%s\\n", genome, completeness, contamination
-            # 强制数值转换
             comp_val = completeness + 0.0
             cont_val = contamination + 0.0
             printf "DEBUG: %s comp_val=%.2f cont_val=%.2f\\n", genome, comp_val, cont_val

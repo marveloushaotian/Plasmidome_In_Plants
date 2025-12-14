@@ -15,13 +15,11 @@ process DEFENSEFINDER_ANNOTATE {
     """
     set -euo pipefail
     
-    # Initialize log file
     echo "[INFO] Starting DefenseFinder annotation for ${sample_id}" > "${sample_id}_defensefinder.log"
     echo "[INFO] Timestamp: \$(date)" >> "${sample_id}_defensefinder.log"
     echo "[INFO] Working directory: \$(pwd)" >> "${sample_id}_defensefinder.log"
     echo "[INFO] Using protein sequence mode" >> "${sample_id}_defensefinder.log"
     
-    # Check if input file exists and has content
     if [ ! -s "${protein_faa}" ]; then
         echo "[WARN] Input protein file ${protein_faa} is empty or doesn't exist" >&2
         echo "[WARN] Input protein file ${protein_faa} is empty or doesn't exist" >> "${sample_id}_defensefinder.log"
@@ -29,7 +27,6 @@ process DEFENSEFINDER_ANNOTATE {
         exit 0
     fi
     
-    # Check if defensefinder is available
     if ! command -v defense-finder &> /dev/null; then
         echo "[ERROR] defense-finder not found in PATH" >&2
         echo "[ERROR] defense-finder not found in PATH" >> "${sample_id}_defensefinder.log"
@@ -37,50 +34,40 @@ process DEFENSEFINDER_ANNOTATE {
         exit 0
     fi
     
-    # Log input information
     echo "[INFO] Protein file: ${protein_faa}" >> "${sample_id}_defensefinder.log"
     echo "[INFO] Sample ID: ${sample_id}" >> "${sample_id}_defensefinder.log"
     
-    # Check DefenseFinder version
     echo "[INFO] DefenseFinder version:" >> "${sample_id}_defensefinder.log"
     defense-finder --version >> "${sample_id}_defensefinder.log" 2>&1 || echo "[WARN] Version check failed" >> "${sample_id}_defensefinder.log"
     
-    # Check file information
     echo "[INFO] Input file information:" >> "${sample_id}_defensefinder.log"
     echo "  File size: \$(stat -c%s '${protein_faa}' 2>/dev/null || echo 'unknown') bytes" >> "${sample_id}_defensefinder.log"
     echo "  Protein sequences count: \$(grep -c '^>' '${protein_faa}' 2>/dev/null || echo 'unknown')" >> "${sample_id}_defensefinder.log"
     
-    # Create output directory
     mkdir -p defensefinder_output
     echo "[INFO] Created output directory: defensefinder_output" >> "${sample_id}_defensefinder.log"
     
-    # Run DefenseFinder annotation
     echo "[INFO] Running DefenseFinder command:" >> "${sample_id}_defensefinder.log"
     echo "defense-finder run -a --db-type gembase ${protein_faa} -o defensefinder_output" >> "${sample_id}_defensefinder.log"
     echo "[INFO] Starting DefenseFinder execution at: \$(date)" >> "${sample_id}_defensefinder.log"
     
-    # Run DefenseFinder
     defense-finder run -a --db-type gembase "${protein_faa}" -o defensefinder_output > defensefinder_stdout.log 2> defensefinder_stderr.log
     exit_code=\$?
     
     echo "[INFO] DefenseFinder finished at: \$(date)" >> "${sample_id}_defensefinder.log"
     echo "[INFO] DefenseFinder exit code: \$exit_code" >> "${sample_id}_defensefinder.log"
     
-    # Append DefenseFinder outputs to main log
     echo "[INFO] DefenseFinder stdout:" >> "${sample_id}_defensefinder.log"
     cat defensefinder_stdout.log >> "${sample_id}_defensefinder.log" 2>/dev/null || echo "No stdout captured" >> "${sample_id}_defensefinder.log"
     echo "[INFO] DefenseFinder stderr:" >> "${sample_id}_defensefinder.log"
     cat defensefinder_stderr.log >> "${sample_id}_defensefinder.log" 2>/dev/null || echo "No stderr captured" >> "${sample_id}_defensefinder.log"
     
-    # Check for output files
     echo "[INFO] Checking for output files:" >> "${sample_id}_defensefinder.log"
     ls -la defensefinder_output/ >> "${sample_id}_defensefinder.log" 2>&1 || echo "No defensefinder_output directory found" >> "${sample_id}_defensefinder.log"
     
-    # Look for TSV files (DefenseFinder outputs TSV)
     tsv_found=false
     tsv_source=""
     
-    # Look for sample-specific or any TSV file
     if [ -f "defensefinder_output/${sample_id}_defense_finder_systems.tsv" ] && [ -s "defensefinder_output/${sample_id}_defense_finder_systems.tsv" ]; then
         tsv_source="defensefinder_output/${sample_id}_defense_finder_systems.tsv"
         tsv_found=true
@@ -92,9 +79,7 @@ process DEFENSEFINDER_ANNOTATE {
         fi
     fi
     
-    # Process results
     if [ "\$tsv_found" = true ] && [ \$exit_code -eq 0 ]; then
-        # Convert TSV to CSV format for consistency
         cp "\$tsv_source" "${sample_id}_defensefinder.csv"
         
         output_size=\$(stat -c%s "${sample_id}_defensefinder.csv" 2>/dev/null || echo 0)
@@ -104,11 +89,9 @@ process DEFENSEFINDER_ANNOTATE {
         echo "[INFO] Output file size: \$output_size bytes" >> "${sample_id}_defensefinder.log"
         echo "[INFO] Defense systems found: \$systems_count" >> "${sample_id}_defensefinder.log"
         
-        # Copy all other output files with proper naming
         for file in defensefinder_output/*; do
             if [ -f "\$file" ]; then
                 filename=\$(basename "\$file")
-                # Avoid double sample_id in filename
                 if [[ "\$filename" != *"${sample_id}"* ]]; then
                     cp "\$file" "${sample_id}_\$filename"
                 else
@@ -123,7 +106,6 @@ process DEFENSEFINDER_ANNOTATE {
         touch "${sample_id}_defensefinder.csv"
     fi
     
-    # Clean up
     rm -f defensefinder_stdout.log defensefinder_stderr.log
     
     echo "[INFO] Process completed at: \$(date)" >> "${sample_id}_defensefinder.log"
@@ -145,10 +127,8 @@ process DEFENSEFINDER_SUMMARY {
     """
     set -euo pipefail
     
-    # Create summary header
     echo "Sample_ID\\tTotal_Systems\\tCRISPR\\tRestriction_Modification\\tAbi\\tToxin_Antitoxin\\tOther\\tFile_Size_Bytes" > defensefinder_summary.tsv
     
-    # Create statistics file
     echo "DefenseFinder Defense Systems Summary" > defense_systems_statistics.txt
     echo "====================================" >> defense_systems_statistics.txt
     echo "Generated on: \$(date)" >> defense_systems_statistics.txt
@@ -170,7 +150,6 @@ process DEFENSEFINDER_SUMMARY {
             
             total_systems_count=0
             if [ -s "\$result_file" ]; then
-                # For CSV files, count non-header lines
                 total_systems_count=\$(tail -n +2 "\$result_file" | wc -l 2>/dev/null || echo 0)
             fi
             
@@ -183,21 +162,14 @@ process DEFENSEFINDER_SUMMARY {
             if [ \$total_systems_count -gt 0 ]; then
                 samples_with_systems=\$((samples_with_systems + 1))
                 
-                # Count different types based on system names in TSV (DefenseFinder uses tab-separated values)
-                # CRISPR systems (look for CRISPR, Cas, Type I/II/III/IV/V/VI)
                 crispr_count=\$(tail -n +2 "\$result_file" | cut -d'\t' -f3 | grep -i "crispr\\|cas\\|type.*i\\|type.*ii\\|type.*iii\\|type.*iv\\|type.*v\\|type.*vi" | wc -l 2>/dev/null || echo 0)
                 
-                # Restriction-Modification systems
                 rm_count=\$(tail -n +2 "\$result_file" | cut -d'\t' -f3 | grep -i "restriction\\|modification\\|rm\\|hsdm\\|hsdr\\|hsds" | wc -l 2>/dev/null || echo 0)
                 
-                # Abortive infection systems
                 abi_count=\$(tail -n +2 "\$result_file" | cut -d'\t' -f3 | grep -i "abortive\\|abi\\|abort" | wc -l 2>/dev/null || echo 0)
                 
-                # Toxin-Antitoxin systems
                 ta_count=\$(tail -n +2 "\$result_file" | cut -d'\t' -f3 | grep -i "toxin\\|antitoxin\\|mazf\\|rele\\|hipa\\|vapb\\|vapc" | wc -l 2>/dev/null || echo 0)
                 
-                # Other defense systems (exclude already counted ones)
-                # Calculate by subtracting classified systems from total
                 classified_count=\$((crispr_count + rm_count + abi_count + ta_count))
                 if [ \$classified_count -le \$total_systems_count ]; then
                     other_count=\$((total_systems_count - classified_count))
@@ -228,7 +200,6 @@ process DEFENSEFINDER_SUMMARY {
         fi
     done
     
-    # Overall statistics
     if [ \$total_samples -gt 0 ]; then
         avg_systems=\$(echo "scale=2; \$total_systems / \$total_samples" | bc -l 2>/dev/null || echo "0")
     else

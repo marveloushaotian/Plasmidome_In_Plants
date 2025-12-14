@@ -3,8 +3,8 @@ process PHYLOGENY {
     publishDir "${params.outdir}/phylogeny", mode: 'copy', overwrite: true
 
     input:
-    path align_dir         // GTDB-Tk align/ directory
-    path hq_list          // e.g., hq_list_all.txt
+    path align_dir  
+    path hq_list
 
     output:
     path "filtered_alignments/*.fasta", emit: filtered_alignments
@@ -16,11 +16,9 @@ process PHYLOGENY {
     set -euo pipefail
     mkdir -p filtered_alignments
 
-    # [0] materialize Nextflow vars to shell vars
     ALIGN_DIR='${align_dir}'
     HQ_LIST='${hq_list}'
 
-    # [1] choose bacterial MSA (prefer user_msa, else msa; support gz or plain)
     pick_first() {
       for f in "\$@"; do
         [ -f "\$f" ] && { printf '%s' "\$f"; return 0; }
@@ -34,7 +32,6 @@ process PHYLOGENY {
     BAC_CAND4="\${ALIGN_DIR}/gtdbtk.bac120.msa.fasta"
     BAC_MSA="\$(pick_first "\$BAC_CAND1" "\$BAC_CAND2" "\$BAC_CAND3" "\$BAC_CAND4" || true)"
 
-    # [2] order-preserving filtering (exactly like your filter_msa_by_list.py)
     if [ -n "\$BAC_MSA" ]; then
       python3 - "\$BAC_MSA" "\$HQ_LIST" "filtered_alignments/bacterial_filtered.fasta" "filter_report.log" <<'PY'
 import sys, gzip, re, os
@@ -42,15 +39,12 @@ import sys, gzip, re, os
 msa_fp, idlist_fp, out_fp, rpt_fp = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 
 def open_any(path):
-    # Support gz or plain text
     return gzip.open(path, "rt") if path.endswith(".gz") else open(path, "r")
 
 def header_id(h):
-    # Get first token after '>'
     h = h[1:].strip()
     return re.split(r"\s|\t", h, maxsplit=1)[0]
 
-# 1) read targets (keep order, ignore blank/#, de-dup)
 targets, seen = [], set()
 with open(idlist_fp) as f:
     for line in f:
@@ -62,7 +56,6 @@ with open(idlist_fp) as f:
         seen.add(s)
         targets.append(s)
 
-# 2) read MSA to dict
 seqs = {}
 with open_any(msa_fp) as f:
     cur_h, buf = None, []
@@ -77,7 +70,6 @@ with open_any(msa_fp) as f:
     if cur_h is not None:
         seqs[cur_h] = "".join(buf)
 
-# 3) write filtered in the order of targets (wrap to 80 chars)
 found, missing = 0, []
 with open(out_fp, "w") as out:
     for tid in targets:
@@ -90,7 +82,6 @@ with open(out_fp, "w") as out:
                 out.write(s[i:i+80] + "\\n")
             found += 1
 
-# 4) report missing and extras
 extras = sorted(set(seqs.keys()) - set(targets))
 with open(rpt_fp, "w") as log:
     log.write(f"[filter] Targets in list: {len(targets)}\\n")
@@ -100,14 +91,12 @@ with open(rpt_fp, "w") as log:
         log.write(f"[filter] Missing IDs (first 20): {missing[:20]}\\n")
     log.write(f"[filter] Extra IDs in MSA not in list: {len(extras)}\\n")
 
-# 5) fail early if nothing found
 if found == 0:
     sys.stderr.write("[ERROR] No HQ sequences found in bacterial MSA.\\n")
     sys.exit(2)
 PY
     fi
 
-    # [3] (optional) also filter archaeal MSA if present, for completeness
     ARC_CAND1="\${ALIGN_DIR}/gtdbtk.ar53.user_msa.fasta.gz"
     ARC_CAND2="\${ALIGN_DIR}/gtdbtk.ar53.msa.fasta.gz"
     ARC_CAND3="\${ALIGN_DIR}/gtdbtk.ar53.user_msa.fasta"
@@ -142,7 +131,6 @@ with open_any(msa_fp) as f, open(out_fp, "w") as out:
 PY
     fi
 
-    # [4] stats
     echo "Alignment Statistics" > alignment_stats.txt
     found=0
     for f in filtered_alignments/*.fasta; do

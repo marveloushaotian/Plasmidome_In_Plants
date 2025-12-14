@@ -3,9 +3,9 @@ process PHYLOGENY_GROUPED {
     publishDir "${params.outdir}/phylogeny_grouped/${group_name}", mode: 'copy', overwrite: true
 
     input:
-    path align_dir         // GTDB-Tk align/ directory
-    path hq_list          // All HQ genomes list
-    tuple val(group_name), val(genome_ids)  // (group_name, [genome_id1, genome_id2, ...])
+    path align_dir
+    path hq_list
+    tuple val(group_name), val(genome_ids)
 
     output:
     tuple val(group_name), path("filtered_alignments/*.fasta"), emit: filtered_alignments
@@ -17,7 +17,6 @@ process PHYLOGENY_GROUPED {
     set -euo pipefail
     mkdir -p filtered_alignments
 
-    # [0] materialize Nextflow vars to shell vars
     ALIGN_DIR='${align_dir}'
     HQ_LIST='${hq_list}'
     GROUP_NAME='${group_name}'
@@ -26,7 +25,6 @@ process PHYLOGENY_GROUPED {
     echo "[INFO] Processing group: \$GROUP_NAME"
     echo "[INFO] Group members: \$GENOME_IDS"
 
-    # [1] choose bacterial MSA (prefer user_msa, else msa; support gz or plain)
     pick_first() {
       for f in "\$@"; do
         [ -f "\$f" ] && { printf '%s' "\$f"; return 0; }
@@ -40,11 +38,9 @@ process PHYLOGENY_GROUPED {
     BAC_CAND4="\${ALIGN_DIR}/gtdbtk.bac120.msa.fasta"
     BAC_MSA="\$(pick_first "\$BAC_CAND1" "\$BAC_CAND2" "\$BAC_CAND3" "\$BAC_CAND4" || true)"
 
-    # [2] Create group-specific HQ list
     echo "Creating group-specific HQ list for \$GROUP_NAME"
     echo "\$GENOME_IDS" | tr ' ' '\\n' > "hq_list_\${GROUP_NAME}.txt"
 
-    # [3] Filter MSA for this group only
     if [ -n "\$BAC_MSA" ]; then
       python3 - "\$BAC_MSA" "hq_list_\${GROUP_NAME}.txt" "filtered_alignments/bacterial_\${GROUP_NAME}.fasta" "filter_report_\${GROUP_NAME}.log" "\$GROUP_NAME" <<'PY'
 import sys, gzip, re, os
@@ -52,15 +48,12 @@ import sys, gzip, re, os
 msa_fp, idlist_fp, out_fp, rpt_fp, group_name = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
 
 def open_any(path):
-    # Support gz or plain text
     return gzip.open(path, "rt") if path.endswith(".gz") else open(path, "r")
 
 def header_id(h):
-    # Get first token after '>'
     h = h[1:].strip()
     return re.split(r"\s|\t", h, maxsplit=1)[0]
 
-# 1) read targets (keep order, ignore blank/#, de-dup)
 targets, seen = [], set()
 with open(idlist_fp) as f:
     for line in f:
@@ -72,7 +65,6 @@ with open(idlist_fp) as f:
         seen.add(s)
         targets.append(s)
 
-# 2) read MSA to dict
 seqs = {}
 with open_any(msa_fp) as f:
     cur_h, buf = None, []
@@ -87,7 +79,6 @@ with open_any(msa_fp) as f:
     if cur_h is not None:
         seqs[cur_h] = "".join(buf)
 
-# 3) write filtered in the order of targets (wrap to 80 chars)
 found, missing = 0, []
 with open(out_fp, "w") as out:
     for tid in targets:
@@ -100,7 +91,6 @@ with open(out_fp, "w") as out:
                 out.write(s[i:i+80] + "\\n")
             found += 1
 
-# 4) report missing and extras
 extras = sorted(set(seqs.keys()) - set(targets))
 with open(rpt_fp, "w") as log:
     log.write(f"[filter] Group: ${sys.argv[5]}\\n")
@@ -111,14 +101,12 @@ with open(rpt_fp, "w") as log:
         log.write(f"[filter] Missing IDs (first 20): {missing[:20]}\\n")
     log.write(f"[filter] Extra IDs in MSA not in list: {len(extras)}\\n")
 
-# 5) fail early if nothing found
 if found == 0:
     sys.stderr.write(f"[ERROR] No sequences found for group {group_name}\\n")
     sys.exit(2)
 PY
     fi
 
-    # [4] (optional) also filter archaeal MSA if present, for completeness
     ARC_CAND1="\${ALIGN_DIR}/gtdbtk.ar53.user_msa.fasta.gz"
     ARC_CAND2="\${ALIGN_DIR}/gtdbtk.ar53.msa.fasta.gz"
     ARC_CAND3="\${ALIGN_DIR}/gtdbtk.ar53.user_msa.fasta"
@@ -153,7 +141,6 @@ with open_any(msa_fp) as f, open(out_fp, "w") as out:
 PY
     fi
 
-    # [5] stats
     echo "Alignment Statistics for Group: \$GROUP_NAME" > alignment_stats.txt
     found=0
     for f in filtered_alignments/*.fasta; do

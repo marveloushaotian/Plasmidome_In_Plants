@@ -15,14 +15,12 @@ process QUALITY_FILTER {
 
     echo "[INFO] QUALITY_FILTER: sample=${sample_id}; cpus=${task.cpus}; len>=${params.length_threshold}; cov>=${params.coverage_threshold}" >&2
 
-    # Step 1: Length filter
     reformat.sh \\
         in=${fasta} \\
         out=${sample_id}_length_filtered.fasta \\
         minlength=${params.length_threshold} \\
         ow=t
     
-    # Step 2: Map reads to filtered contigs
     bbmap.sh \\
         ref=${sample_id}_length_filtered.fasta \\
         in1=${reads[0]} in2=${reads[1]} \\
@@ -30,12 +28,10 @@ process QUALITY_FILTER {
         threads=${task.cpus} \\
         nodisk
     
-    # Step 3: Calculate coverage
     pileup.sh \\
         in=${sample_id}_mapped.sam \\
         covstats=${sample_id}_contig_covstats.txt
     
-    # Step 4: Filter by coverage
     awk -v threshold=${params.coverage_threshold} \\
         'NR>1 && \$2 >= threshold {print \$1}' ${sample_id}_contig_covstats.txt > keep_ids.txt
     
@@ -46,7 +42,6 @@ process QUALITY_FILTER {
         names=keep_ids.txt \\
         overwrite=t
     
-    # Copy stats for output
     cp ${sample_id}_contig_covstats.txt ${sample_id}_coverage_stats.txt
     """
 }

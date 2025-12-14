@@ -16,7 +16,6 @@ process PRODIGAL_PREDICT {
     """
     set -euo pipefail
     
-    # Check if input file exists and has content
     if [ ! -s "${fasta}" ]; then
         echo "[WARN] Input file ${fasta} is empty or doesn't exist" >&2
         touch "${sample_id}.gff3"
@@ -26,7 +25,6 @@ process PRODIGAL_PREDICT {
         exit 0
     fi
     
-    # Run Prodigal gene prediction
     prodigal -i "${fasta}" -f gff -o "${sample_id}.gff3" -d "${sample_id}.fna" -a "${sample_id}.faa" &> "${sample_id}.log" || {
         echo "[ERROR] Prodigal failed for ${sample_id}" >&2
         echo "Prodigal prediction failed" > "${sample_id}.log"
@@ -70,33 +68,27 @@ process PRODIGAL_SUMMARY {
         if [ -f "\$gff_file" ] && [ -s "\$gff_file" ]; then
             sample_id=\$(basename "\$gff_file" .gff3)
             
-            # Count genes from GFF file
             gene_count=\$(grep -c "^[^#]" "\$gff_file" 2>/dev/null || echo 0)
             
-            # Count proteins from corresponding protein file
             protein_file="\${gff_file%.gff3}.faa"
             protein_count=0
             if [ -f "\$protein_file" ] && [ -s "\$protein_file" ]; then
                 protein_count=\$(grep -c "^>" "\$protein_file" 2>/dev/null || echo 0)
             fi
             
-            # Calculate average gene length from GFF
             avg_length=0
             if [ \$gene_count -gt 0 ]; then
                 avg_length=\$(awk -F'\\t' 'BEGIN{sum=0; count=0} /^[^#]/{sum+=\$5-\$4+1; count++} END{if(count>0) printf "%.1f", sum/count; else print "0"}' "\$gff_file" 2>/dev/null || echo "0")
             fi
             
-            # Get GC content from log file
             log_file="\${gff_file%.gff3}.log"
             gc_content="0.0"
             if [ -f "\$log_file" ]; then
                 gc_content=\$(grep "GC content:" "\$log_file" | awk '{print \$3}' | sed 's/%//' 2>/dev/null || echo "0.0")
             fi
             
-            # Add to summary
             echo "\$sample_id\\t\$gene_count\\t\$protein_count\\t\$avg_length\\t\$gc_content" >> prodigal_summary.tsv
             
-            # Add to statistics
             echo "Sample: \$sample_id" >> prodigal_statistics.txt
             echo "  Total genes: \$gene_count" >> prodigal_statistics.txt
             echo "  Total proteins: \$protein_count" >> prodigal_statistics.txt
@@ -110,7 +102,6 @@ process PRODIGAL_SUMMARY {
         fi
     done
     
-    # Overall statistics
     if [ \$total_genes -gt 0 ]; then
         avg_genes_per_sample=\$(echo "scale=2; \$total_genes / \$total_samples" | bc -l)
     else
