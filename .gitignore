@@ -1,44 +1,34 @@
 # ============================================
-# Whitelist mode: exclude all files by default, only allow specified types
+# Whitelist mode: only track specified file types
 # ============================================
 
-# Exclude everything
+# Exclude everything by default
 *
 
-# Allow directories (required for traversing subdirectories)
+# Allow all directories (must come before file rules)
 !*/
 
 # ============================================
-# Allowed script files
+# Allow script files
 # ============================================
-# Shell scripts
 !*.sh
 !*.bash
-
-# Python scripts
 !*.py
-
-# R scripts
 !*.R
 !*.r
 !*.Rmd
 
-# Nextflow workflows
+# Nextflow and Snakemake
 !*.nf
+!*.smk
 !nextflow.config
 !Nextflow.config
-
-# Snakemake workflows
-!*.smk
 !Snakefile
 
 # ============================================
-# Allowed configuration and documentation files
+# Allow documentation and configuration
 # ============================================
-# Markdown documentation
 !*.md
-
-# Configuration files
 !*.yaml
 !*.yml
 !*.json
@@ -47,54 +37,22 @@
 !*.conf
 !*.config
 
-# Git configuration
 !.gitignore
 !.gitattributes
-
-# Project documentation
 !README*
 !LICENSE*
 !CHANGELOG*
 !Makefile
 
 # ============================================
-# Optional: uncomment if needed
+# Special exclusions (directories to skip entirely)
 # ============================================
-# !*.txt        # Important text documents
-# !*.csv        # Small metadata tables
-# !*.tsv        # Tab-separated metadata
-
-# ============================================
-# Exclude these even if they match above rules
-# ============================================
-# Python cache
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# R cache
-.Rproj.user/
-.Rhistory
-.RData
-
-# Virtual environments
-.env/
 .venv/
 venv/
+.env/
 ENV/
-
-# IDE files
 .vscode/
 .idea/
-*.swp
-*.swo
-
-# OS files
+.Rproj.user/
 .DS_Store
-Thumbs.db
-
-# Temporary files
-*.tmp
-*.temp
-*.log
