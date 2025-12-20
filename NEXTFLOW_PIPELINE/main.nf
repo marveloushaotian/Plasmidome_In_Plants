@@ -2,26 +2,19 @@
 nextflow.enable.dsl=2
 
 // ---------------- Parameters ----------------
-// === Input mode selection ===
-params.input_mode        = "labeled"                        // "raw" (from fastq) or "labeled" (from labeled fasta + qa.tsv)
-
-// === For raw mode (original pipeline) ===
 params.raw_reads         = "Raw_Reads"                      // Directory containing paired-end FASTQ files
-params.adapters          = "/scratch/miniforge3/envs/anvio-8/share/bbmap/resources/adapters.fa"
-
-// === For labeled mode ===
-params.labeled_fastas    = "PREPARED_FROM_TK_ALL_LAEBLED"   // Directory containing labeled FASTA files
-params.existing_qa       = "qa.tsv"                         // Path to existing CheckM qa.tsv file
-
 params.outdir            = "Results"                        // Output directory
+params.adapters          = "/scratch/miniforge3/envs/anvio-8/share/bbmap/resources/adapters.fa"
 
 // Sample grouping for separate phylogenetic trees
 params.sample_groups     = null                  // Path to tab-separated file: Sample_ID	Group_Name (required when run_grouped_trees=true)
 params.run_grouped_trees = false                 // Enable grouped tree construction
 params.run_overall_tree  = false                 // Enable overall tree construction (all samples together)
 
-// CheckM mode selection
-params.checkm_mode       = "single"              // "single" (incremental, recommended) or "batch" (legacy)
+// CheckM version and mode selection
+params.checkm_version    = "checkm1"             // "checkm1" (default) or "checkm2" (faster, ML-based)
+params.checkm_mode       = "single"              // "single" (incremental, recommended) or "batch" (legacy, only for checkm1)
+params.checkm2_db        = "/projects/somicrobiology/data/CRBC_CropMicrobiomeBacteria/ketao/Database/checkM2/CheckM2_database/uniref100.KO.1"  // CheckM2 database path (without .dmnd extension)
 
 params.genomad_db        = "/projects/somicrobiology/data/CRBC_CropMicrobiomeBacteria/ketao/genomad_db"
 params.gtdbtk_db         = "/projects/somicrobiology/data/CRBC_CropMicrobiomeBacteria/ketao/gtdbtk_db/release226"
@@ -46,10 +39,9 @@ params.prokka_rfam = true
 // MOB-suite parameters
 params.mobsuite_db = null  // Optional: path to MOB-suite database if not using default
 
-// EggNOG parameters (optional, disabled by default)
-params.eggnog_db = "/dev/shm/eggnog_db/"
-params.run_eggnog = false                   // Enable EggNOG functional annotation (disabled by default, time-consuming)
-params.eggnog_protein_source = "prodigal"   // Options: "prodigal" (default, faster) or "prokka" (more detailed) 
+// EggNOG parameters
+params.eggnog_db = "/projects/somicrobiology/data/CRBC_CropMicrobiomeBacteria/ketao/eggnog_db"
+params.run_eggnog = false  // Enable EggNOG functional annotation (disabled by default, time-consuming)
 
 // ---------------- Include modules ----------------
 include { ASSEMBLY            } from './modules/assembly'
@@ -59,15 +51,17 @@ include { LABEL_CONTIGS       } from './modules/label_contigs'
 include { PREP_CHECKM_INPUTS  } from './modules/prep_checkm_inputs'
 include { CHECKM_BATCH        } from './modules/checkm_batch'
 include { CHECKM_SINGLE       } from './modules/checkm_single'
+include { CHECKM2_SINGLE      } from './modules/checkm2_single'
 include { MERGE_CHECKM_RESULTS } from './modules/merge_checkm_results'
 include { FILTER_HQ_GENOMES   } from './modules/filter_hq_genomes'
 include { GTDBTK              } from './modules/gtdbtk'
+include { GTDBTK_SPLIT; GTDBTK_CLASSIFY_BATCH; GTDBTK_MERGE } from './modules/gtdbtk_batch'
 include { PHYLOGENY           } from './modules/phylogeny'
 include { PHYLOGENY_GROUPED   } from './modules/phylogeny_grouped'
 include { EGGNOG_DIAMOND; EGGNOG_ANNOTATION } from './modules/eggnog'
 include { IQTREE              } from './modules/iqtree'
 include { IQTREE_GROUPED      } from './modules/iqtree_grouped'
-include { MOBSUITE_RECON; MOBSUITE_TYPER } from './modules/mobsuite'
+include { MOBSUITE_TYPER } from './modules/mobsuite'
 include { PROKKA_SANITIZE; PROKKA_ANNOTATE } from './modules/prokka'
 include { PRODIGAL_PREDICT } from './modules/prodigal'
 include { PADLOC_ANNOTATE } from './modules/padloc'
@@ -75,203 +69,176 @@ include { DEFENSEFINDER_ANNOTATE } from './modules/defensefinder'
 include { CCTYPER_ANNOTATE } from './modules/cctyper'
 include { AMRFINDER_ANNOTATE } from './modules/amrfinder'
 include { COLLECT_GFF_FILES; COLLECT_PADLOC_RESULTS; COLLECT_DEFENSEFINDER_RESULTS; COLLECT_CCTYPER_RESULTS; MERGE_DEFENSE_SYSTEMS; DEFENSE_SUMMARY } from './modules/defense_merger'
+include { EXTRACT_CONTIG_MAPPING } from './modules/extract_contig_mapping'
 
 // ---------------- Workflow ----------------
 workflow {
 
-    // Common database channels
-    eggnog_db_ch = Channel.value( params.eggnog_db )
+    // 0) Build input channels
+    reads_ch = Channel
+        .fromFilePairs("${params.raw_reads}/*_{1,2}.fastq.gz")
+        .map { sid, files -> tuple(sid.toString(), files) }
+
+    adapters_ch = Channel.value( file(params.adapters) )
+    genomad_db_ch = Channel.value( params.genomad_db )
     gtdb_db_ch    = Channel.value( params.gtdbtk_db )
+    eggnog_db_ch  = Channel.value( params.eggnog_db )
+
+    // 1) Assembly
+    //    ASSEMBLY expects: tuple(id, [R1,R2]), path(adapters)
+    ASSEMBLY( reads_ch, adapters_ch )
+    // ASSEMBLY.out.contigs => tuple(id, path_contigs)
+
+    // 2) Length + coverage filter
+    //    QUALITY_FILTER expects: tuple(id, fasta, reads)
+    quality_in_ch = ASSEMBLY.out.contigs.join( reads_ch )
+    QUALITY_FILTER( quality_in_ch )
+    // QUALITY_FILTER.out.filtered_fasta => tuple(id, path_filtered_fasta)
+
+    // 2.5) Filter out empty filtered fastas (samples with no contigs passing QC)
+    //      This prevents downstream errors in GENOMAD, LABEL_CONTIGS, and CHECKM
+    QUALITY_FILTER.out.filtered_fasta
+        .branch { sample_id, fasta ->
+            non_empty: fasta.size() > 0
+            empty: true
+        }
+        .set { filtered_results }
+
+    // Log samples with empty filtered fastas to file (silently)
+    filtered_results.empty
+        .map { sample_id, fasta -> sample_id }
+        .collectFile(name: 'empty_samples_skipped.txt', newLine: true, storeDir: params.outdir)
+
+    // Use non-empty samples for downstream analyses
+    filtered_fasta_for_downstream = filtered_results.non_empty
+
+    // 3) GeNomad (on filtered contigs)
+    //    GENOMAD expects: tuple(id, fasta), val(genomad_db)
+    GENOMAD( filtered_fasta_for_downstream, genomad_db_ch )
+    // GENOMAD.out.summary => tuple(id, path_genomad_dir)
+
+    // 4) Label contigs using GeNomad results
+    //    LABEL_CONTIGS expects: tuple(id, fasta, genomad_dir)
+    GENOMAD.out.summary
+        .join( filtered_fasta_for_downstream )                     // (id, genomad_dir, fasta)
+        .map { id, genomad_dir, fasta -> tuple(id, fasta, genomad_dir) }
+        .set { label_in_ch }
+
+    LABEL_CONTIGS( label_in_ch )
+    // LABEL_CONTIGS.out.labeled_fasta => tuple(id, labeled_fasta)
 
     // ========================================
-    // CONDITIONAL WORKFLOW EXECUTION
+    // 4.5) Extract contig mapping (sample name -> contig name)
+    //      This creates a CSV file mapping sample IDs to their contig names
     // ========================================
+    
+    // Collect all labeled fasta files
+    labeled_fasta_list = LABEL_CONTIGS.out.labeled_fasta
+        .map { id, fasta -> fasta }
+        .collect()
+    
+    // Extract contig mapping
+    EXTRACT_CONTIG_MAPPING( labeled_fasta_list )
+    // EXTRACT_CONTIG_MAPPING.out.mapping_table => path("contig_mapping.csv")
 
-    if (params.input_mode == "labeled") {
-        // ============================================
-        // NEW MODE: Start from labeled FASTA + qa.tsv
-        // ============================================
-        log.info """
-        =====================================
-        Running in LABELED mode
-        =====================================
-        Input: Labeled FASTA files from ${params.labeled_fastas}
-        QA file: ${params.existing_qa}
-
-        Skipping steps:
-        - Assembly
-        - Quality Filter
-        - GeNomad
-        - Label Contigs
-        - CheckM
-
-        Starting from: HQ genome filtering
-        =====================================
-        """.stripIndent()
-
-        // 1) Load labeled FASTA files
-        //    Create channel: tuple(sample_id, fasta_file)
-        labeled_genomes_ch = Channel
-            .fromPath("${params.labeled_fastas}/*.fasta")
-            .map { fasta ->
-                def sample_id = fasta.baseName  // e.g., "sample1" from "sample1.fasta"
-                tuple(sample_id, fasta)
-            }
-
-        // 2) Use existing qa.tsv file
-        //    Create channel from existing CheckM QA file
-        checkm_qa_all = Channel.fromPath(params.existing_qa, checkIfExists: true)
-
-        // 3) Build HQ/LQ lists from existing QA file
-        FILTER_HQ_GENOMES( checkm_qa_all )
-
-    } else {
-        // ============================================
-        // ORIGINAL MODE: Start from raw FASTQ reads
-        // ============================================
-        log.info """
-        =====================================
-        Running in RAW mode (original pipeline)
-        =====================================
-        Input: Raw reads from ${params.raw_reads}
-
-        Running full pipeline:
-        - Assembly
-        - Quality Filter
-        - GeNomad
-        - Label Contigs
-        - CheckM
-        - All downstream analyses
-        =====================================
-        """.stripIndent()
-
-        // 0) Build input channels
-        reads_ch = Channel
-            .fromFilePairs("${params.raw_reads}/*_{1,2}.fastq.gz")
-            .map { sid, files -> tuple(sid.toString(), files) }
-
-        adapters_ch = Channel.value( file(params.adapters) )
-        genomad_db_ch = Channel.value( params.genomad_db )
-
-        // 1) Assembly
-        //    ASSEMBLY expects: tuple(id, [R1,R2]), path(adapters)
-        ASSEMBLY( reads_ch, adapters_ch )
-        // ASSEMBLY.out.contigs => tuple(id, path_contigs)
-
-        // 2) Length + coverage filter
-        //    QUALITY_FILTER expects: tuple(id, fasta, reads)
-        quality_in_ch = ASSEMBLY.out.contigs.join( reads_ch )
-        QUALITY_FILTER( quality_in_ch )
-        // QUALITY_FILTER.out.filtered_fasta => tuple(id, path_filtered_fasta)
-
-        // 2.5) Filter out empty filtered fastas (samples with no contigs passing QC)
-        //      This prevents downstream errors in GENOMAD, LABEL_CONTIGS, and CHECKM
-        QUALITY_FILTER.out.filtered_fasta
-            .branch { sample_id, fasta ->
-                non_empty: fasta.size() > 0
-                empty: true
-            }
-            .set { filtered_results }
-
-        // Log samples with empty filtered fastas
-        filtered_results.empty
-            .subscribe { sample_id, fasta ->
-                log.warn "⚠️  Sample ${sample_id}: filtered fasta is empty (no contigs passed QC thresholds: length>=${params.length_threshold}, coverage>=${params.coverage_threshold}). Skipping all downstream analyses for this sample."
-            }
-
-        // Use non-empty samples for downstream analyses
-        filtered_fasta_for_downstream = filtered_results.non_empty
-
-        // 3) GeNomad (on filtered contigs)
-        //    GENOMAD expects: tuple(id, fasta), val(genomad_db)
-        GENOMAD( filtered_fasta_for_downstream, genomad_db_ch )
-        // GENOMAD.out.summary => tuple(id, path_genomad_dir)
-
-        // 4) Label contigs using GeNomad results
-        //    LABEL_CONTIGS expects: tuple(id, fasta, genomad_dir)
-        GENOMAD.out.summary
-            .join( filtered_fasta_for_downstream )                     // (id, genomad_dir, fasta)
-            .map { id, genomad_dir, fasta -> tuple(id, fasta, genomad_dir) }
-            .set { label_in_ch }
-
-        LABEL_CONTIGS( label_in_ch )
-        // LABEL_CONTIGS.out.labeled_fasta => tuple(id, labeled_fasta)
-
-        // ========================================
-        // 5-7) CheckM Quality Assessment
-        //      Two modes available:
-        //      - single: Run CheckM per sample (incremental, recommended for large-scale)
-        //      - batch:  Run CheckM in batch (legacy, faster for small datasets)
-        // ========================================
-
+    // ========================================
+    // 5-7) CheckM Quality Assessment
+    //      Version selection: checkm2 (default, faster) or checkm1 (legacy)
+    //      Mode selection (checkm1 only): single or batch
+    // ========================================
+    
+    if (params.checkm_version == "checkm2") {
+        // === CheckM2 mode (default) ===
+        // CheckM2 is faster and more accurate than CheckM1
+        // Uses machine learning and only runs in single-sample mode
+        
+        println "[INFO] Using CheckM2 for quality assessment (faster, ML-based)"
+        
+        CHECKM2_SINGLE( LABEL_CONTIGS.out.labeled_fasta )
+        
+        // Collect all QA results
+        qa_all_list = CHECKM2_SINGLE.out.qa_all
+            .map { id, qa -> qa }
+            .collect()
+        
+        qa_chro_list = CHECKM2_SINGLE.out.qa_chro
+            .map { id, qa -> qa }
+            .collect()
+        
+        // Merge results from all samples
+        MERGE_CHECKM_RESULTS( qa_all_list, qa_chro_list )
+        
+        // Set output channels for downstream
+        checkm_qa_all = MERGE_CHECKM_RESULTS.out.qa_all
+        checkm_qa_chro = MERGE_CHECKM_RESULTS.out.qa_chro
+        
+    } else if (params.checkm_version == "checkm1") {
+        // === CheckM1 mode (legacy) ===
+        println "[INFO] Using CheckM1 for quality assessment (legacy mode)"
+        
         if (params.checkm_mode == "single") {
             // === Single-sample mode (incremental) ===
             // Each sample runs CheckM independently
-            // Advantages:
+            // Advantages: 
             //   - New samples don't trigger re-running old samples
             //   - Better for incremental analysis
             //   - Nextflow cache works per sample
-
+            
             CHECKM_SINGLE( LABEL_CONTIGS.out.labeled_fasta )
-
+            
             // Collect all QA results
             qa_all_list = CHECKM_SINGLE.out.qa_all
                 .map { id, qa -> qa }
                 .collect()
-
+            
             qa_chro_list = CHECKM_SINGLE.out.qa_chro
                 .map { id, qa -> qa }
                 .collect()
-
+            
             // Merge results from all samples
             MERGE_CHECKM_RESULTS( qa_all_list, qa_chro_list )
-
+            
             // Set output channels for downstream
             checkm_qa_all = MERGE_CHECKM_RESULTS.out.qa_all
             checkm_qa_chro = MERGE_CHECKM_RESULTS.out.qa_chro
-
+            
         } else {
             // === Batch mode (legacy) ===
             // All samples run CheckM together
             // Advantages:
             //   - Slightly faster for small datasets
             //   - Single CheckM invocation
-
+            
             labeled_fasta_list = LABEL_CONTIGS.out.labeled_fasta
                 .map { id, f -> f }
                 .collect()
-
+            
             PREP_CHECKM_INPUTS( labeled_fasta_list )
-
+            
             CHECKM_BATCH(
                 PREP_CHECKM_INPUTS.out.bins_all_dir,
                 PREP_CHECKM_INPUTS.out.bins_chro_dir
             )
-
+            
             // Set output channels for downstream
             checkm_qa_all = CHECKM_BATCH.out.qa_all
             checkm_qa_chro = CHECKM_BATCH.out.qa_chro
         }
-
-        // Use labeled_fasta from LABEL_CONTIGS for downstream
-        labeled_genomes_ch = LABEL_CONTIGS.out.labeled_fasta
-
-        // 8) Build HQ/LQ lists from QA tables
-        checkm_qa_all
-            .mix( checkm_qa_chro )
-            .collect()
-            .set { all_qa_files_ch }
-
-        FILTER_HQ_GENOMES( all_qa_files_ch )
+    } else {
+        error "ERROR: params.checkm_version must be 'checkm2' or 'checkm1', got: ${params.checkm_version}"
     }
+    
+    // 8) Build HQ/LQ lists from QA tables
+    checkm_qa_all
+        .mix( checkm_qa_chro )
+        .collect()
+        .set { all_qa_files_ch }
 
-    // ========================================
-    // DOWNSTREAM ANALYSES (Common for both modes)
-    // ========================================
+    FILTER_HQ_GENOMES( all_qa_files_ch )
     // FILTER_HQ_GENOMES.out.hq_list => path("hq_genomes.txt")
 
     // ========================================
-    // Create unified HQ genomes dataset
+    // 9) Create unified HQ genomes dataset
     //    This is the SINGLE SOURCE for all HQ genome files
     //    All downstream analyses should reference this channel
     // ========================================
@@ -280,93 +247,97 @@ workflow {
         .map { it.trim() }
         .filter { it }
 
-    // Create HQ genomes channel based on input mode
-    if (params.input_mode == "labeled") {
-        // In labeled mode, filter labeled_genomes_ch by HQ IDs
-        hq_genomes_ch = labeled_genomes_ch
+    // Create HQ genomes channel based on CheckM mode
+    if (params.checkm_mode == "single") {
+        // In single mode, use labeled_fasta files directly
+        hq_genomes_ch = LABEL_CONTIGS.out.labeled_fasta
             .join( hq_ids_ch.map { id -> tuple(id, id) } )  // Keep only HQ samples
             .map { id, fasta, hq_id -> tuple(id, fasta) }
     } else {
-        // In raw mode, use original logic
-        if (params.checkm_mode == "single") {
-            // In single mode, use labeled_fasta files directly
-            hq_genomes_ch = labeled_genomes_ch
-                .join( hq_ids_ch.map { id -> tuple(id, id) } )  // Keep only HQ samples
-                .map { id, fasta, hq_id -> tuple(id, fasta) }
-        } else {
-            // In batch mode, use PREP_CHECKM_INPUTS output
-            hq_genomes_ch = PREP_CHECKM_INPUTS.out.bins_all_dir
-                .combine( hq_ids_ch )                                          // (dir, id)
-                .map { dir, id -> tuple(id, file("${dir}/${id}.fasta")) }      // tuple(id, fasta)
-        }
+        // In batch mode, use PREP_CHECKM_INPUTS output
+        hq_genomes_ch = PREP_CHECKM_INPUTS.out.bins_all_dir
+            .combine( hq_ids_ch )                                          // (dir, id)
+            .map { dir, id -> tuple(id, file("${dir}/${id}.fasta")) }      // tuple(id, fasta)
     }
     // hq_genomes_ch is now the unified channel: tuple(genome_id, fasta_file)
 
     // ========================================
-    // 9) GTDB-Tk classification on HQ genomes (optional, disabled by default)
-    //    Requires: list of FASTA files
-    //    Enable with: --run_gtdbtk true
+    // 10) GTDB-Tk classification on HQ genomes (optional, disabled by default)
+    //     Requires: list of FASTA files
+    //     Enable with: --run_gtdbtk true
     // ========================================
     if (params.run_gtdbtk) {
-        println "[INFO] GTDB-Tk classification enabled"
+        println "[INFO] GTDB-Tk classification enabled (batch mode: 50 genomes/batch)"
 
         hq_fasta_list = hq_genomes_ch
             .map { id, fasta -> fasta }
             .collect()
 
-        GTDBTK( hq_fasta_list, gtdb_db_ch )
-        // GTDBTK.out.alignments => path("gtdbtk_output/align")
+        // Batch processing: split -> classify in parallel -> merge
+        GTDBTK_SPLIT( hq_fasta_list )
+        GTDBTK_CLASSIFY_BATCH( 
+            GTDBTK_SPLIT.out.batches.flatten(),
+            gtdb_db_ch 
+        )
+        GTDBTK_MERGE( 
+            GTDBTK_CLASSIFY_BATCH.out.summary.collect(),
+            GTDBTK_CLASSIFY_BATCH.out.alignments.collect()
+        )
+        
+        // Output channels (compatible with downstream processes)
+        gtdbtk_summary = GTDBTK_MERGE.out.summary
+        gtdbtk_alignments = GTDBTK_MERGE.out.alignments
     } else {
         println "[INFO] GTDB-Tk classification disabled (set --run_gtdbtk true to enable)"
     }
 
     // ========================================
-    // 10) MOB-suite analysis for HQ genomes
+    // 11) MOB-suite analysis for HQ genomes
     //     Requires: tuple(id, fasta) - uses unified hq_genomes_ch
     // ========================================
-    MOBSUITE_RECON( hq_genomes_ch )
+    // MOBSUITE_RECON( hq_genomes_ch )  // Disabled
     MOBSUITE_TYPER( hq_genomes_ch )
 
     // ========================================
-    // 11) Prokka annotation for HQ genomes
+    // 12) Prokka annotation for HQ genomes
     //     Requires: tuple(id, fasta) - uses unified hq_genomes_ch
     // ========================================
     PROKKA_SANITIZE( hq_genomes_ch )
     PROKKA_ANNOTATE( PROKKA_SANITIZE.out.sanitized_fasta )
 
     // ========================================
-    // 12) Prodigal gene prediction for HQ genomes
+    // 13) Prodigal gene prediction for HQ genomes
     //     Requires: tuple(id, fasta) - uses unified hq_genomes_ch
     //     This is the SOURCE for protein/gene sequences
     // ========================================
     PRODIGAL_PREDICT( hq_genomes_ch )
 
     // ========================================
-    // 13) DefenseFinder annotation for HQ genomes
+    // 14) DefenseFinder annotation for HQ genomes
     //     Requires: tuple(id, proteins.faa) from Prodigal
     // ========================================
     DEFENSEFINDER_ANNOTATE( PRODIGAL_PREDICT.out.proteins )
 
     // ========================================
-    // 14) CCTyper CRISPR-Cas annotation for HQ genomes
-    //     Requires: tuple(id, genes.fna) from Prodigal
+    // 15) CCTyper CRISPR-Cas annotation for HQ genomes
+    //     Requires: tuple(id, fasta) - uses unified hq_genomes_ch
     // ========================================
-    CCTYPER_ANNOTATE( PRODIGAL_PREDICT.out.genes )
+    CCTYPER_ANNOTATE( hq_genomes_ch )
 
     // ========================================
-    // 15) AMRFinder resistance gene annotation for HQ genomes
+    // 16) AMRFinder resistance gene annotation for HQ genomes
     //     Requires: tuple(id, proteins.faa) from Prodigal
     // ========================================
     AMRFINDER_ANNOTATE( PRODIGAL_PREDICT.out.proteins )
 
     // ========================================
-    // 16) PADLOC defense systems annotation for HQ genomes
+    // 17) PADLOC defense systems annotation for HQ genomes
     //     Requires: tuple(id, fasta) - uses unified hq_genomes_ch
     // ========================================
     PADLOC_ANNOTATE( hq_genomes_ch )
 
     // ========================================
-    // 17-18) Phylogenetic tree construction (requires GTDB-Tk)
+    // 18-19) Phylogenetic tree construction (requires GTDB-Tk)
     //        Only runs if params.run_gtdbtk = true
     // ========================================
 
@@ -378,7 +349,7 @@ workflow {
 
         if (params.run_overall_tree) {
             // Original single tree construction for all samples
-            PHYLOGENY( GTDBTK.out.alignments, FILTER_HQ_GENOMES.out.hq_list )
+            PHYLOGENY( gtdbtk_alignments, FILTER_HQ_GENOMES.out.hq_list )
             IQTREE( PHYLOGENY.out.filtered_alignments )
         }
 
@@ -405,7 +376,7 @@ workflow {
 
             // Grouped tree construction: separate trees for each group
             PHYLOGENY_GROUPED(
-                GTDBTK.out.alignments,
+                gtdbtk_alignments,
                 FILTER_HQ_GENOMES.out.hq_list,
                 hq_genomes_with_groups_ch
             )
@@ -416,38 +387,28 @@ workflow {
     }
 
     // ========================================
-    // 19) EggNOG functional annotation for HQ genomes (optional)
-    //     Protein source can be configured via params.eggnog_protein_source
-    //     - "prodigal": Use Prodigal proteins (default, faster, always available)
-    //     - "prokka": Use Prokka proteins (more detailed gene names)
+    // 20) EggNOG functional annotation for HQ genomes (optional)
+    //     Two-step process: 1) Diamond search 2) Annotation
     // ========================================
     if (params.run_eggnog) {
-        // Select protein source based on parameter
-        if (params.eggnog_protein_source == "prokka") {
-            // Use Prokka annotated proteins
-            eggnog_proteins_ch = PROKKA_ANNOTATE.out.proteins
-                .map { id, f -> tuple(id, f) }
-            
-            println "[INFO] EggNOG will use Prokka proteins (detailed gene names)"
-        } else {
-            // Use Prodigal predicted proteins (default)
-            eggnog_proteins_ch = PRODIGAL_PREDICT.out.proteins
-                .map { id, f -> tuple(id, f) }
-            
-            println "[INFO] EggNOG will use Prodigal proteins (faster, default)"
-        }
+        println "[INFO] EggNOG functional annotation enabled"
         
-        // Run eggNOG diamond search
-        EGGNOG_DIAMOND( eggnog_proteins_ch, eggnog_db_ch )
+        // Collect all prokka .faa files
+        prokka_faa_files = PROKKA_ANNOTATE.out.proteins
+            .map { id, faa -> faa }
+            .collect()
         
-        // Run eggNOG annotation
-        EGGNOG_ANNOTATION( EGGNOG_DIAMOND.out.diamond_results, eggnog_db_ch )
+        // Step 1: Diamond search
+        EGGNOG_DIAMOND( prokka_faa_files, eggnog_db_ch )
+        
+        // Step 2: Annotation
+        EGGNOG_ANNOTATION( EGGNOG_DIAMOND.out.diamond_dir, eggnog_db_ch )
     } else {
-        println "[INFO] EggNOG annotation is disabled (set params.run_eggnog=true to enable)"
+        println "[INFO] EggNOG annotation disabled (set --run_eggnog true to enable)"
     }
 
     // ========================================
-    // 20) Merge defense systems annotations (always enabled)
+    // 21) Merge defense systems annotations (always enabled)
     //     Combines results from PADLOC, DefenseFinder, and CCTyper
     //     Mapping file: Defense_Systems_Name_List.xlsx (in project root)
     // ========================================

@@ -54,8 +54,8 @@ process CCTYPER_ANNOTATE {
     # Use a unique temp name to avoid conflicts
     temp_output="cctyper_temp_\$(date +%s)_\$\$"
 
-    # Run CCTyper
-    timeout 1800 cctyper "${gene_fna}" "\$temp_output" > cctyper.stdout 2> cctyper.stderr || true
+    # Run CCTyper with Prodigal meta mode and multi-threading
+    timeout 1800 cctyper "${gene_fna}" "\$temp_output" --prodigal meta --threads ${task.cpus} > cctyper.stdout 2> cctyper.stderr || true
 
     # Log outputs
     if [ -f cctyper.stdout ]; then
@@ -92,9 +92,11 @@ process CCTYPER_ANNOTATE {
             result_count=\$(tail -n +2 "${sample_id}_cas_operons.tab" 2>/dev/null | wc -l || echo 0)
             echo "[INFO] Found \$result_count CRISPR-Cas systems in cas_operons.tab" >> "${sample_id}_cctyper.log"
         elif [ -f "${sample_id}_cas_operons_putative.tab" ]; then
-            echo "[INFO] Found cas_operons_putative.tab but not cas_operons.tab" >> "${sample_id}_cctyper.log"
-            # Use putative as main result if no confirmed operons
-            cp "${sample_id}_cas_operons_putative.tab" "${sample_id}_cas_operons.tab"
+            putative_count=\$(tail -n +2 "${sample_id}_cas_operons_putative.tab" 2>/dev/null | wc -l || echo 0)
+            echo "[INFO] Found \$putative_count putative CRISPR-Cas systems in cas_operons_putative.tab" >> "${sample_id}_cctyper.log"
+            echo "[INFO] No confirmed CRISPR-Cas systems found, only putative results available" >> "${sample_id}_cctyper.log"
+            # Create empty cas_operons.tab file
+            touch "${sample_id}_cas_operons.tab"
         else
             echo "[WARN] No CRISPR-Cas systems found" >> "${sample_id}_cctyper.log"
             touch "${sample_id}_cas_operons.tab"

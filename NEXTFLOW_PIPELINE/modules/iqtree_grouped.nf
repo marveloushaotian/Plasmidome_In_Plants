@@ -1,9 +1,9 @@
-process IQTREE {
-    tag "$alignment.simpleName"
-    publishDir "${params.outdir}/trees", mode: 'copy', overwrite: true
+process IQTREE_GROUPED {
+    tag "iqtree_${group_name}_${alignment.simpleName}"
+    publishDir "${params.outdir}/trees_grouped/${group_name}", mode: 'copy', overwrite: true
 
     input:
-    path alignment
+    tuple val(group_name), path(alignment)
 
     output:
     path "${alignment.simpleName}.treefile", emit: tree
@@ -14,12 +14,18 @@ process IQTREE {
     """
     set -euo pipefail
 
+    # [A] 序列数预检（少于4条直接退出，避免白跑）
     NSEQ=\$(grep -c '^>' "${alignment}" || echo 0)
     if [ "\$NSEQ" -lt 2 ]; then
-      echo "[ERROR] ${alignment} has only \$NSEQ sequences; need >=4 for a meaningful tree." >&2
+      echo "[ERROR] ${alignment} has only \$NSEQ sequences; need >=2 for a meaningful tree." >&2
       exit 3
     fi
 
+    echo "[INFO] Building tree for group: ${group_name}"
+    echo "[INFO] Alignment file: ${alignment}"
+    echo "[INFO] Number of sequences: \$NSEQ"
+
+    # [1] 模型搜索（缓存）
     if [ ! -s best_model.txt ]; then
       iqtree2 \\
         -s "${alignment}" \\
@@ -28,6 +34,7 @@ process IQTREE {
         -pre model_test \\
         -T ${task.cpus} \\
         -mem ${task.memory.toMega()}M
+      # 解析最佳模型
       awk -F':' '/Best-fit model/ {gsub(/[[:space:]]+/,"",\$2); print \$2}' model_test.iqtree > best_model.txt || true
     fi
 
@@ -37,6 +44,7 @@ process IQTREE {
     fi
     echo "[INFO] Using model: \$BEST_MODEL"
 
+    # [2] 最终建树
     iqtree2 \\
       -s "${alignment}" \\
       -st AA \\
@@ -49,4 +57,3 @@ process IQTREE {
       -pre "${alignment.simpleName}"
     """
 }
-

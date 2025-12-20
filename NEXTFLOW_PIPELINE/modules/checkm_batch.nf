@@ -7,10 +7,10 @@ process CHECKM_BATCH {
     path bins_chro_dir
     
     output:
-    path "qa_all.tsv",     emit: qa_all        
-    path "lineage_all.ms", emit: lineage_all   
-    path "qa_chro.tsv",    emit: qa_chro       
-    path "lineage_chro.ms",emit: lineage_chro  
+    path "qa_all.tsv",     emit: qa_all        // 改名避免冲突
+    path "lineage_all.ms", emit: lineage_all   // 改名避免冲突
+    path "qa_chro.tsv",    emit: qa_chro       // 改名避免冲突
+    path "lineage_chro.ms",emit: lineage_chro  // 改名避免冲突
     
     script:
     """
@@ -27,6 +27,7 @@ process CHECKM_BATCH {
       echo "No chromosome-only FASTAs found" > checkm_chro/qa.tsv
     fi
     
+    # 复制到不冲突的文件名
     cp checkm_all/qa.tsv qa_all.tsv
     cp checkm_all/lineage.ms lineage_all.ms
     cp checkm_chro/qa.tsv qa_chro.tsv

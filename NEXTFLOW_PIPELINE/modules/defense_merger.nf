@@ -19,6 +19,8 @@ process COLLECT_GFF_FILES {
     for gff in ${gff_files}; do
         if [ -s "\$gff" ]; then
             # Extract CDS features and convert to TSV format
+            # Prodigal protein IDs: "1_31" means contig 1, gene 31
+            # Replace contig number with full seqid: "1_31" -> "NODE_1_..._31"
             grep "CDS" "\$gff" 2>/dev/null | awk -F'\\t' '{
                 # Extract protein_id from attributes (column 9)
                 match(\$9, /ID=([^;]+)/, id_arr)
@@ -28,7 +30,12 @@ process COLLECT_GFF_FILES {
                     prot_id = pid_arr[1]
                 }
                 if (prot_id != "") {
-                    print \$1"\\t"\$2"\\t"\$3"\\t"\$4"\\t"\$5"\\t"\$6"\\t"\$7"\\t"\$8"\\t"prot_id
+                    # Remove contig number from prot_id (everything before first underscore)
+                    # e.g., "1_31" -> "31"
+                    sub(/^[^_]+_/, "", prot_id)
+                    # Create full protein ID: seqid + "_" + gene_number
+                    full_prot_id = \$1 "_" prot_id
+                    print \$1"\\t"\$2"\\t"\$3"\\t"\$4"\\t"\$5"\\t"\$6"\\t"\$7"\\t"\$8"\\t"full_prot_id
                 }
             }' >> all_transformed_gff.tsv || true
         fi
@@ -169,9 +176,40 @@ process MERGE_DEFENSE_SYSTEMS {
     path "merge_stats.txt", emit: stats
 
     script:
+    def merge_script = file("${projectDir}/bin/merge_defense_systems.py")
+    def merge_signature = merge_script.text.hashCode()
     """
-    #!/usr/bin/env python3
-    ${file("${projectDir}/bin/merge_defense_systems.py").text}
+    set -euo pipefail
+
+    echo "merge_defense_systems.py signature: ${merge_signature}"
+
+    # Run merge_defense_systems.py with proper arguments
+    python3 ${merge_script} \
+        --mapping ${mapping_file} \
+        --gff ${merged_gff} \
+        --padloc ${merged_padloc} \
+        --defensefinder ${merged_defensefinder} \
+        --cctyper ${merged_cctyper}
+    
+    # Generate merge statistics
+    echo "Merge statistics:" > merge_stats.txt
+    echo "Input files:" >> merge_stats.txt
+    echo "  GFF: ${merged_gff}" >> merge_stats.txt
+    echo "  PADLOC: ${merged_padloc}" >> merge_stats.txt
+    echo "  DefenseFinder: ${merged_defensefinder}" >> merge_stats.txt
+    echo "  CCTyper: ${merged_cctyper}" >> merge_stats.txt
+    echo "  Mapping: ${mapping_file}" >> merge_stats.txt
+    echo "" >> merge_stats.txt
+    echo "Output files:" >> merge_stats.txt
+    if [ -f "all.merged" ]; then
+        echo "  all.merged: \$(wc -l < all.merged) lines" >> merge_stats.txt
+    fi
+    if [ -f "all.merged.unified" ]; then
+        echo "  all.merged.unified: \$(wc -l < all.merged.unified) lines" >> merge_stats.txt
+    fi
+    if [ -f "defense_results.tsv" ]; then
+        echo "  defense_results.tsv: \$(wc -l < defense_results.tsv) lines" >> merge_stats.txt
+    fi
     """
 }
 
@@ -204,7 +242,10 @@ process DEFENSE_SUMMARY {
         echo ""
         echo "By Subtype (top 20):"
         echo "--------------------"
+        # 临时禁用pipefail以避免head命令的SIGPIPE问题
+        set +o pipefail
         tail -n +2 ${defense_results} | awk -F'\\t' '\$3 != "" {print \$3}' | sort | uniq -c | sort -rn | head -20
+        set -o pipefail
 
         echo ""
         echo "PDC Systems:"
@@ -215,7 +256,7 @@ process DEFENSE_SUMMARY {
         echo ""
         echo "Antidefense Systems:"
         echo "--------------------"
-        anti_count=\$(tail -n +2 ${defense_results} | awk -F'\\t' '\$6 != "" {print \$6}' | wc -l)
+        anti_count=\$(tail -n +2 ${defense_results} | awk -F'\\t' '\$18 != "" {print \$18}' | wc -l)
         echo "Total antidefense systems: \$anti_count"
 
     } > defense_summary_report.txt
@@ -226,7 +267,7 @@ process DEFENSE_SUMMARY {
         echo -e "Total_Systems\\t\$(tail -n +2 ${defense_results} | wc -l)"
         echo -e "Defense_Systems\\t\$(tail -n +2 ${defense_results} | awk -F'\\t' '\$2 != "" {print \$2}' | wc -l)"
         echo -e "PDC_Systems\\t\$(tail -n +2 ${defense_results} | awk -F'\\t' '\$4 != "" {print \$4}' | wc -l)"
-        echo -e "Antidefense_Systems\\t\$(tail -n +2 ${defense_results} | awk -F'\\t' '\$6 != "" {print \$6}' | wc -l)"
+        echo -e "Antidefense_Systems\\t\$(tail -n +2 ${defense_results} | awk -F'\\t' '\$18 != "" {print \$18}' | wc -l)"
     } > defense_statistics.tsv
 
     cat defense_summary_report.txt
