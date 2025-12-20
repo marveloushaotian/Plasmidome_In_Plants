@@ -1,58 +1,80 @@
 # ============================================
-# Whitelist mode: only track specified file types
+# Exclude large data files
 # ============================================
+*.fastq
+*.fastq.gz
+*.fasta
+*.fasta.gz
+*.fa
+*.fa.gz
+*.fq
+*.fq.gz
+*.bam
+*.sam
+*.vcf
+*.vcf.gz
+*.bz2
+*.tar
+*.tar.gz
+*.hdf5
+*.h5
 
-# Exclude everything by default
-*
-
-# Allow all directories (must come before file rules)
-!*/
-
-# ============================================
-# Allow script files
-# ============================================
-!*.sh
-!*.bash
-!*.py
-!*.R
-!*.r
-!*.Rmd
-
-# Nextflow and Snakemake
-!*.nf
-!*.smk
-!nextflow.config
-!Nextflow.config
-!Snakefile
-
-# ============================================
-# Allow documentation and configuration
-# ============================================
-!*.md
-!*.yaml
-!*.yml
-!*.json
-!*.toml
-!*.ini
-!*.conf
-!*.config
-
-!.gitignore
-!.gitattributes
-!README*
-!LICENSE*
-!CHANGELOG*
-!Makefile
+# Exclude large tabular data
+*.tsv
+*.csv
+*.xlsx
+*.txt
 
 # ============================================
-# Special exclusions (directories to skip entirely)
+# Exclude data directories (including symlinks)
+# ============================================
+Result
+Reference
+Report
+Collect
+data
+output
+
+# ============================================
+# Python
 # ============================================
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ============================================
+# R
+# ============================================
+.Rproj.user/
+.Rhistory
+.RData
+
+# ============================================
+# Environments
+# ============================================
 .venv/
 venv/
 .env/
 ENV/
+
+# ============================================
+# IDE
+# ============================================
 .vscode/
 .idea/
-.Rproj.user/
+*.swp
+*.swo
+
+# ============================================
+# OS
+# ============================================
 .DS_Store
+Thumbs.db
+
+# ============================================
+# Temporary
+# ============================================
+*.tmp
+*.temp
+*.log
