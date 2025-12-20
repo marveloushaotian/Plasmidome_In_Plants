@@ -1,47 +1,100 @@
-# Project-specific folders (containing large data files)
-Reference
-Result
-Report
-Collect
+# ============================================
+# Whitelist mode: exclude all files by default, only allow specified types
+# ============================================
 
-# Python-related files (for the transfer.py script)
-__pycache__
-*.py[codz]
-*$py.class
-*.so
+# Exclude everything
+*
+
+# Allow directories (required for traversing subdirectories)
+!*/
+
+# ============================================
+# Allowed script files
+# ============================================
+# Shell scripts
+!*.sh
+!*.bash
+
+# Python scripts
+!*.py
+
+# R scripts
+!*.R
+!*.r
+!*.Rmd
+
+# Nextflow workflows
+!*.nf
+!nextflow.config
+!Nextflow.config
+
+# Snakemake workflows
+!*.smk
+!Snakefile
+
+# ============================================
+# Allowed configuration and documentation files
+# ============================================
+# Markdown documentation
+!*.md
+
+# Configuration files
+!*.yaml
+!*.yml
+!*.json
+!*.toml
+!*.ini
+!*.conf
+!*.config
+
+# Git configuration
+!.gitignore
+!.gitattributes
+
+# Project documentation
+!README*
+!LICENSE*
+!CHANGELOG*
+!Makefile
+
+# ============================================
+# Optional: uncomment if needed
+# ============================================
+# !*.txt        # Important text documents
+# !*.csv        # Small metadata tables
+# !*.tsv        # Tab-separated metadata
+
+# ============================================
+# Exclude these even if they match above rules
+# ============================================
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# R cache
+.Rproj.user/
+.Rhistory
+.RData
 
 # Virtual environments
-.env
-.venv
-venv
-ENV
+.env/
+.venv/
+venv/
+ENV/
 
-# IDE and editor files
-.vscode
-.idea
+# IDE files
+.vscode/
+.idea/
 *.swp
 *.swo
 
-# OS generated files
+# OS files
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
 # Temporary files
 *.tmp
 *.temp
 *.log
-
-# Large data files that shouldn't be tracked
-*.fastq
-*.fasta
-*.fq
-*.gz
-*.bz2
-*.zip
-*.tar
-*.tar.gz
