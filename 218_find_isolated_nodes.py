@@ -28,7 +28,7 @@ def find_isolated_nodes(nodes_file, edges_file, node_id_col=None, output_file=No
     
     # Auto-detect node ID column if not specified
     if node_id_col is None:
-        possible_cols = ['id', 'cluster', 'contig', 'node']
+        possible_cols = ['id', 'cluster', 'contig', 'node', 'GenomeID_standard']
         for col in possible_cols:
             if col in df_nodes.columns:
                 node_id_col = col
@@ -45,12 +45,17 @@ def find_isolated_nodes(nodes_file, edges_file, node_id_col=None, output_file=No
     # Read edges file
     df_edges = pd.read_csv(edges_file, sep='\t', low_memory=False)
     
-    # Get all node IDs that appear in edges (from source and target columns)
+    # Get all node IDs that appear in edges (from source/target or g1/g2 columns)
     connected_node_ids = set()
     if 'source' in df_edges.columns:
         connected_node_ids.update(df_edges['source'].unique())
     if 'target' in df_edges.columns:
         connected_node_ids.update(df_edges['target'].unique())
+    # Support for isolate_network format (g1, g2)
+    if 'g1' in df_edges.columns:
+        connected_node_ids.update(df_edges['g1'].unique())
+    if 'g2' in df_edges.columns:
+        connected_node_ids.update(df_edges['g2'].unique())
     
     # Find isolated nodes (in nodes but not in edges)
     isolated_node_ids = all_node_ids - connected_node_ids
@@ -76,12 +81,15 @@ Examples:
   
   # For transfer_network
   python 218_find_isolated_nodes.py -d Result/NCBI_4395_Batch/07_Network/transfer_network/Annotation -n contig -o Result/NCBI_4395_Batch/07_Network/transfer_network/isolated_nodes
+  
+  # For isolate_network
+  python 218_find_isolated_nodes.py -d Result/NCBI_4395_Batch/07_Network/isolate_network -n GenomeID_standard -o Result/NCBI_4395_Batch/07_Network/isolate_network/isolated_nodes
         """
     )
     parser.add_argument('-d', '--directory', required=True,
                         help='Directory containing nodes and edges TSV files')
     parser.add_argument('-n', '--node-id-col', default=None,
-                        help='Column name for node ID in nodes files (auto-detect if not specified: id, cluster, contig, node)')
+                        help='Column name for node ID in nodes files (auto-detect if not specified: id, cluster, contig, node, GenomeID_standard)')
     parser.add_argument('-o', '--output-dir', default='isolated_nodes',
                         help='Output directory for isolated nodes files (default: isolated_nodes)')
     
@@ -117,7 +125,7 @@ Examples:
         try:
             # Try to auto-detect node ID column for this file
             df_test = pd.read_csv(nodes_file, sep='\t', nrows=1)
-            possible_cols = ['id', 'cluster', 'contig', 'node']
+            possible_cols = ['id', 'cluster', 'contig', 'node', 'GenomeID_standard']
             node_id_col = args.node_id_col
             if node_id_col is None:
                 for col in possible_cols:

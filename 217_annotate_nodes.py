@@ -36,6 +36,9 @@ Examples:
   
   # For transfer_network (using contig column)
   python 217_annotate_nodes.py -m Result/NCBI_4395_Batch/07_Network/transfer_network/mmseq_overall_contigs_cluster.rename_map.merged.tsv -d Result/NCBI_4395_Batch/07_Network/transfer_network -o Result/NCBI_4395_Batch/07_Network/transfer_network/Annotation -k contig
+  
+  # For isolate_network (using GenomeID_standard, extracting genome ID from contig IDs)
+  python 217_annotate_nodes.py -m Result/NCBI_4395_Batch/07_Network/isolate_network/mmseq_overall_contigs_cluster.rename_map.merged.tsv -d Result/NCBI_4395_Batch/07_Network/isolate_network -o Result/NCBI_4395_Batch/07_Network/isolate_network/Annotation -k GenomeID_standard --extract-genome-id
         """
     )
     parser.add_argument('-m', '--merged', required=True,
@@ -45,8 +48,10 @@ Examples:
     parser.add_argument('-o', '--output-dir', required=True,
                         help='Output directory (Annotation folder)')
     parser.add_argument('-k', '--key-column', default='auto',
-                        choices=['auto', 'cluster', 'contig'],
-                        help='Column name to use for matching (auto: detect from nodes file, cluster: use cluster column, contig: use contig column)')
+                        choices=['auto', 'cluster', 'contig', 'GenomeID_standard'],
+                        help='Column name to use for matching (auto: detect from nodes file, cluster: use cluster column, contig: use contig column, GenomeID_standard: use GenomeID_standard column)')
+    parser.add_argument('--extract-genome-id', action='store_true',
+                        help='Extract genome ID from contig IDs in merged file for matching with GenomeID_standard (e.g., CRBC_G0001_plasmid1_116324 -> CRBC_G0001)')
     
     args = parser.parse_args()
     
@@ -93,13 +98,15 @@ Examples:
         # Determine key column for matching
         key_col = args.key_column
         if key_col == 'auto':
-            # Auto-detect: prefer cluster, then contig
+            # Auto-detect: prefer cluster, then contig, then GenomeID_standard
             if 'cluster' in df_nodes.columns:
                 key_col = 'cluster'
             elif 'contig' in df_nodes.columns:
                 key_col = 'contig'
+            elif 'GenomeID_standard' in df_nodes.columns:
+                key_col = 'GenomeID_standard'
             else:
-                print(f"  Warning: Neither 'cluster' nor 'contig' column found in {nodes_file.name}, skipping...")
+                print(f"  Warning: Neither 'cluster', 'contig', nor 'GenomeID_standard' column found in {nodes_file.name}, skipping...")
                 continue
         
         # Check if key column exists
@@ -107,13 +114,30 @@ Examples:
             print(f"  Warning: '{key_col}' column not found in {nodes_file.name}, skipping...")
             continue
         
-        # Merge based on new (from merged) and key_col (from nodes)
+        # Prepare merged data for matching
+        df_merged_for_match = df_merged_subset.copy()
+        
+        # If matching with GenomeID_standard and extract_genome_id is True, extract genome ID from contig IDs
+        if key_col == 'GenomeID_standard' and args.extract_genome_id:
+            # Extract genome ID from contig ID (e.g., CRBC_G0001_plasmid1_116324 -> CRBC_G0001)
+            df_merged_for_match['genome_id'] = df_merged_for_match['new'].str.split('_').str[:2].str.join('_')
+            merge_left_on = key_col
+            merge_right_on = 'genome_id'
+        else:
+            merge_left_on = key_col
+            merge_right_on = 'new'
+        
+        # Merge based on key columns
         df_annotated = df_nodes.merge(
-            df_merged_subset,
-            left_on=key_col,
-            right_on='new',
+            df_merged_for_match,
+            left_on=merge_left_on,
+            right_on=merge_right_on,
             how='left'
         )
+        
+        # Drop temporary genome_id column if it was created
+        if 'genome_id' in df_annotated.columns:
+            df_annotated = df_annotated.drop(columns=['genome_id'])
         
         # Drop the 'new' column as it's redundant with key_col
         if 'new' in df_annotated.columns:
