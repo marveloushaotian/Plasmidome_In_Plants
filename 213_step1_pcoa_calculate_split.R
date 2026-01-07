@@ -5,13 +5,14 @@
 # Description: Calculate PCoA coordinates from gene type profiles
 #              Supports: Defense, AMR, AntiDefense
 #              Save coordinates and metadata for later plotting
-# Usage: Rscript 213_step1_pcoa_calculate.R -i <input.csv> -t <type> -o <output_prefix> -d <workdir>
+# Usage: Rscript 213_step1_pcoa_calculate.R -i <input.csv> -t <type> -o <output_prefix> [-g <group_column>] [-c]
 #
 # Arguments:
 #   -i: Input CSV file (expanded gene type file)
 #   -t: Gene type: 'defense', 'amr', or 'antidefense'
 #   -o: Output prefix (default: PCoA_Data)
-#   -d: Working directory (default: current directory)
+#   -g: Optional grouping column (e.g., Host, Genus_CRBC_Updated) to split analysis by group
+#   -c: Use count numbers instead of binary (present/absent) for PCoA analysis
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -29,13 +30,12 @@ parser$add_argument("-t", "--type", required = TRUE,
                      help = "Gene type: 'defense', 'amr', or 'antidefense'")
 parser$add_argument("-o", "--output", default = "PCoA_Data", 
                     help = "Output file prefix (default: PCoA_Data)")
-parser$add_argument("-d", "--workdir", default = ".", 
-                    help = "Working directory (default: current directory)")
+parser$add_argument("-g", "--group", default = NULL,
+                    help = "Optional grouping column name to split analysis (e.g., Host, Genus_CRBC_Updated)")
+parser$add_argument("-c", "--use-counts", action = "store_true",
+                    help = "Use count numbers instead of binary (present/absent) for PCoA analysis")
 
 args <- parser$parse_args()
-
-# Set working directory
-setwd(args$workdir)
 
 # Configuration based on type
 type_config <- list(
@@ -64,7 +64,16 @@ config <- type_config[[args$type]]
 
 cat(sprintf("=== Step 1: PCoA Calculation for %s ===\n\n", config$name))
 cat(sprintf("Reading data from: %s\n", args$input))
+if (args$use_counts) {
+  cat("Mode: Using count numbers (Bray-Curtis distance)\n")
+} else {
+  cat("Mode: Using binary presence/absence (Jaccard distance)\n")
+}
+cat("\n")
 df <- read.csv(args$input, stringsAsFactors = FALSE, check.names = FALSE)
+
+# Get input file directory for output files
+input_dir <- dirname(normalizePath(args$input, mustWork = TRUE))
 
 # Get numeric gene type columns
 all_cols <- colnames(df)
@@ -88,6 +97,21 @@ df_filtered <- df %>%
   filter(Contig_Type2 %in% c("Plasmid", "Chromosome"))
 
 cat(sprintf("Total rows after filtering: %d\n\n", nrow(df_filtered)))
+
+# Check if grouping column exists
+if (!is.null(args$group)) {
+  if (!args$group %in% colnames(df_filtered)) {
+    stop(sprintf("Error: Grouping column '%s' not found in input file. Available columns: %s\n", 
+                 args$group, paste(head(colnames(df_filtered), 20), collapse = ", ")))
+  }
+  # Check for missing values in grouping column
+  df_filtered <- df_filtered[!is.na(df_filtered[[args$group]]) & df_filtered[[args$group]] != "", ]
+  groups <- unique(df_filtered[[args$group]])
+  cat(sprintf("Grouping by '%s': Found %d groups\n", args$group, length(groups)))
+  cat(sprintf("Groups: %s\n\n", paste(groups, collapse = ", ")))
+} else {
+  groups <- NULL
+}
 
 # Function to create gene matrix aggregated by Sample_ID
 create_gene_matrix_by_sample <- function(data, contig_type, gene_cols) {
@@ -116,7 +140,7 @@ create_gene_matrix_by_sample <- function(data, contig_type, gene_cols) {
 }
 
 # Function to run PCoA and save results
-run_pcoa_calculation <- function(data, contig_type, output_prefix, gene_cols, matrix_suffix) {
+run_pcoa_calculation <- function(data, contig_type, output_prefix, gene_cols, matrix_suffix, output_dir) {
   cat(sprintf("=== Processing %s ===\n", contig_type))
   
   result <- create_gene_matrix_by_sample(data, contig_type, gene_cols)
@@ -148,11 +172,20 @@ run_pcoa_calculation <- function(data, contig_type, output_prefix, gene_cols, ma
   
   cat(sprintf("Gene types present: %d\n", ncol(gene_matrix_clean)))
   
-  # Convert to presence/absence for Jaccard
-  gene_matrix_binary <- (gene_matrix_clean > 0) * 1
-  
-  cat("Calculating Jaccard distance matrix...\n")
-  dist_matrix <- vegdist(gene_matrix_binary, method = "jaccard", binary = TRUE)
+  # Convert to presence/absence for Jaccard, or use counts
+  # Store original clean matrix for count mode
+  if (args$use_counts) {
+    cat("Using count numbers for distance calculation (Bray-Curtis distance)...\n")
+    gene_matrix_for_dist <- gene_matrix_clean
+    dist_matrix <- vegdist(gene_matrix_for_dist, method = "bray")
+    # Also create binary version for saving (for compatibility with step2)
+    gene_matrix_binary <- (gene_matrix_clean > 0) * 1
+  } else {
+    cat("Converting to presence/absence for Jaccard distance...\n")
+    gene_matrix_binary <- (gene_matrix_clean > 0) * 1
+    gene_matrix_for_dist <- gene_matrix_binary
+    dist_matrix <- vegdist(gene_matrix_for_dist, method = "jaccard", binary = TRUE)
+  }
   
   cat("Running PCoA...\n")
   set.seed(123)
@@ -209,14 +242,39 @@ run_pcoa_calculation <- function(data, contig_type, output_prefix, gene_cols, ma
     
     plot_data <- plot_data[!outlier_idx, ]
     keep_samples <- plot_data$Sample_ID
-    gene_matrix_binary <- gene_matrix_binary[rownames(gene_matrix_binary) %in% keep_samples, ]
-    gene_matrix_binary <- gene_matrix_binary[, colSums(gene_matrix_binary) > 0]
+    
+    # Update matrices based on whether we're using counts or binary
+    if (args$use_counts) {
+      # Filter the original clean matrix and recalculate binary
+      gene_matrix_clean <- gene_matrix_clean[rownames(gene_matrix_clean) %in% keep_samples, , drop = FALSE]
+      gene_matrix_clean <- gene_matrix_clean[, colSums(gene_matrix_clean) > 0, drop = FALSE]
+      gene_matrix_binary <- (gene_matrix_clean > 0) * 1
+      gene_matrix_for_dist <- gene_matrix_clean
+    } else {
+      gene_matrix_binary <- gene_matrix_binary[rownames(gene_matrix_binary) %in% keep_samples, , drop = FALSE]
+      gene_matrix_binary <- gene_matrix_binary[, colSums(gene_matrix_binary) > 0, drop = FALSE]
+      gene_matrix_for_dist <- gene_matrix_binary
+    }
+    
+    # Check if we still have enough samples and gene types after outlier removal
+    if (nrow(gene_matrix_for_dist) < 3) {
+      cat("Not enough samples after outlier removal\n")
+      return(NULL)
+    }
+    if (ncol(gene_matrix_for_dist) < 2) {
+      cat("Not enough gene types after outlier removal\n")
+      return(NULL)
+    }
     
     cat(sprintf("Remaining samples: %d\n", nrow(plot_data)))
     
     # Re-run PCoA
     cat("Re-running PCoA on cleaned data...\n")
-    dist_matrix <- vegdist(gene_matrix_binary, method = "jaccard", binary = TRUE)
+    if (args$use_counts) {
+      dist_matrix <- vegdist(gene_matrix_for_dist, method = "bray")
+    } else {
+      dist_matrix <- vegdist(gene_matrix_for_dist, method = "jaccard", binary = TRUE)
+    }
     
     pcoa_result_new <- tryCatch({
       pcoa(dist_matrix, correction = "cailliez")
@@ -256,7 +314,7 @@ run_pcoa_calculation <- function(data, contig_type, output_prefix, gene_cols, ma
   }
   
   # Save PCoA coordinates with metadata
-  coord_file <- sprintf("%s_%s_coordinates.csv", output_prefix, contig_type)
+  coord_file <- file.path(output_dir, sprintf("%s_%s_coordinates.csv", output_prefix, contig_type))
   write.csv(plot_data, coord_file, row.names = FALSE)
   cat(sprintf("Coordinates saved to: %s\n", coord_file))
   
@@ -267,51 +325,93 @@ run_pcoa_calculation <- function(data, contig_type, output_prefix, gene_cols, ma
     Variance_Explained_Pct = variance_explained[1:min(10, length(variance_explained))],
     Cumulative_Variance_Pct = cumsum(variance_explained)[1:min(10, length(variance_explained))]
   )
-  var_file <- sprintf("%s_%s_variance.csv", output_prefix, contig_type)
+  var_file <- file.path(output_dir, sprintf("%s_%s_variance.csv", output_prefix, contig_type))
   write.csv(var_df, var_file, row.names = FALSE)
   cat(sprintf("Variance explained saved to: %s\n", var_file))
   
   # Save gene matrix (binary) for envfit in step2
-  matrix_file <- sprintf("%s_%s_%s.csv", output_prefix, contig_type, matrix_suffix)
+  # Note: Always save binary version for compatibility with step2 plotting script
+  matrix_file <- file.path(output_dir, sprintf("%s_%s_%s.csv", output_prefix, contig_type, matrix_suffix))
   gene_df <- as.data.frame(gene_matrix_binary)
   gene_df$Sample_ID <- rownames(gene_matrix_binary)
   gene_df <- gene_df %>% select(Sample_ID, everything())
   write.csv(gene_df, matrix_file, row.names = FALSE)
-  cat(sprintf("Gene matrix saved to: %s\n\n", matrix_file))
+  if (args$use_counts) {
+    cat(sprintf("Gene matrix (binary) saved to: %s (Note: PCoA was calculated using counts)\n\n", matrix_file))
+  } else {
+    cat(sprintf("Gene matrix (binary) saved to: %s\n\n", matrix_file))
+  }
   
   return(list(coordinates = plot_data, variance = variance_explained))
 }
 
-# Run PCoA for both contig types
+# Function to process a single group or all data
+process_group <- function(data_subset, group_name = NULL) {
+  if (!is.null(group_name)) {
+    cat(sprintf("\n========================================\n"))
+    cat(sprintf("Processing group: %s\n", group_name))
+    cat("========================================\n\n")
+    output_prefix <- sprintf("%s_%s", args$output, gsub("[^A-Za-z0-9_]", "_", group_name))
+  } else {
+    output_prefix <- args$output
+  }
+  
+  result_chr <- run_pcoa_calculation(data_subset, "Chromosome", output_prefix, 
+                                      existing_gene_cols, config$matrix_suffix, input_dir)
+  result_pla <- run_pcoa_calculation(data_subset, "Plasmid", output_prefix, 
+                                      existing_gene_cols, config$matrix_suffix, input_dir)
+  
+  return(list(chr = result_chr, pla = result_pla, prefix = output_prefix))
+}
+
+# Run PCoA calculation
 cat("\n========================================\n")
 cat(sprintf("Starting PCoA Calculation for %s\n", config$name))
+if (!is.null(args$group)) {
+  cat(sprintf("Grouping by: %s\n", args$group))
+}
 cat("========================================\n\n")
 
-result_chr <- run_pcoa_calculation(df_filtered, "Chromosome", args$output, 
-                                    existing_gene_cols, config$matrix_suffix)
-result_pla <- run_pcoa_calculation(df_filtered, "Plasmid", args$output, 
-                                    existing_gene_cols, config$matrix_suffix)
+all_results <- list()
+
+if (!is.null(args$group) && !is.null(groups)) {
+  # Process each group separately
+  for (group_val in groups) {
+    df_group <- df_filtered[df_filtered[[args$group]] == group_val, ]
+    cat(sprintf("\nGroup '%s': %d rows\n", group_val, nrow(df_group)))
+    
+    group_results <- process_group(df_group, group_val)
+    all_results[[as.character(group_val)]] <- group_results
+  }
+} else {
+  # Process all data together
+  results <- process_group(df_filtered, NULL)
+  all_results[["all"]] <- results
+}
 
 # Summary
-cat("========================================\n")
+cat("\n========================================\n")
 cat("PCoA Calculation Complete!\n")
 cat("========================================\n\n")
 
-if (!is.null(result_chr)) {
-  cat(sprintf("Chromosome: %d samples, Axis1=%.2f%%, Axis2=%.2f%%\n", 
-              nrow(result_chr$coordinates), result_chr$variance[1], result_chr$variance[2]))
-}
-if (!is.null(result_pla)) {
-  cat(sprintf("Plasmid: %d samples, Axis1=%.2f%%, Axis2=%.2f%%\n", 
-              nrow(result_pla$coordinates), result_pla$variance[1], result_pla$variance[2]))
+for (result_name in names(all_results)) {
+  results <- all_results[[result_name]]
+  if (!is.null(result_name) && result_name != "all") {
+    cat(sprintf("Group: %s\n", result_name))
+  }
+  
+  if (!is.null(results$chr)) {
+    cat(sprintf("  Chromosome: %d samples, Axis1=%.2f%%, Axis2=%.2f%%\n", 
+                nrow(results$chr$coordinates), results$chr$variance[1], results$chr$variance[2]))
+  }
+  if (!is.null(results$pla)) {
+    cat(sprintf("  Plasmid: %d samples, Axis1=%.2f%%, Axis2=%.2f%%\n", 
+                nrow(results$pla$coordinates), results$pla$variance[1], results$pla$variance[2]))
+  }
+  cat("\n")
 }
 
-cat("\nOutput files:\n")
-cat(sprintf("  - %s_Chromosome_coordinates.csv\n", args$output))
-cat(sprintf("  - %s_Chromosome_variance.csv\n", args$output))
-cat(sprintf("  - %s_Chromosome_%s.csv\n", args$output, config$matrix_suffix))
-cat(sprintf("  - %s_Plasmid_coordinates.csv\n", args$output))
-cat(sprintf("  - %s_Plasmid_variance.csv\n", args$output))
-cat(sprintf("  - %s_Plasmid_%s.csv\n", args$output, config$matrix_suffix))
+cat("Output directory: ", input_dir, "\n")
+cat("Output files saved to input file directory.\n")
 cat(sprintf("\nRun 214_step2_pcoa_plot.R to create customized plots.\n"))
 

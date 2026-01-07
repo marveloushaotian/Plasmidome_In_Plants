@@ -6,14 +6,13 @@
 #              Supports: Defense, AMR, AntiDefense
 #              Supports: color by taxonomy, shape by Host, gene arrows,
 #              confidence ellipses, and more
-# Usage: Rscript 214_step2_pcoa_plot.R -p <prefix> -t <type> -d <workdir> [options]
+# Usage: Rscript 214_step2_pcoa_plot.R -p <prefix> -t <type> [options]
 #
 # Arguments:
 #   -p: Input file prefix (e.g., PCoA_Data, PCoA_AMR_Data, PCoA_AntiDS_Data)
 #   -t: Gene type: 'defense', 'amr', or 'antidefense'
-#   -d: Working directory (default: current directory)
-#   -c: Color by variable (default: Class_CRBC)
-#   -s: Shape by variable (default: Host, use NULL for none)
+#   -c: Optional color by variable (default: Class_CRBC if not specified)
+#   -s: Optional shape by variable (default: Host if not specified, use 'NULL' for none)
 #   -e: Show ellipse (default: TRUE)
 #   -a: Show arrows (default: TRUE)
 #   -o: Output suffix (default: final)
@@ -33,12 +32,10 @@ parser$add_argument("-p", "--prefix", required = TRUE,
 parser$add_argument("-t", "--type", required = TRUE,
                     choices = c("defense", "amr", "antidefense"),
                     help = "Gene type: 'defense', 'amr', or 'antidefense'")
-parser$add_argument("-d", "--workdir", default = ".", 
-                    help = "Working directory (default: current directory)")
-parser$add_argument("-c", "--color-by", default = "Class_CRBC",
-                    help = "Color by variable (default: Class_CRBC)")
-parser$add_argument("-s", "--shape-by", default = "Host",
-                    help = "Shape by variable (default: Host, use 'NULL' for none)")
+parser$add_argument("-c", "--color-by", default = NULL,
+                    help = "Optional color by variable (default: Class_CRBC if not specified)")
+parser$add_argument("-s", "--shape-by", default = NULL,
+                    help = "Optional shape by variable (default: Host if not specified, use 'NULL' for none)")
 parser$add_argument("-e", "--ellipse", action = "store_true", default = TRUE,
                     help = "Show confidence ellipses")
 parser$add_argument("-a", "--arrows", action = "store_true", default = TRUE,
@@ -47,9 +44,6 @@ parser$add_argument("-o", "--output-suffix", default = "final",
                     help = "Output file suffix (default: final)")
 
 args <- parser$parse_args()
-
-# Set working directory
-setwd(args$workdir)
 
 # Configuration
 type_config <- list(
@@ -72,9 +66,9 @@ type_config <- list(
 
 config <- type_config[[args$type]]
 
-# Settings
-COLOR_BY <- args$color_by
-SHAPE_BY <- if (args$shape_by == "NULL") NULL else args$shape_by
+# Settings - use defaults if not provided
+COLOR_BY <- if (is.null(args$color_by)) "Class_CRBC" else args$color_by
+SHAPE_BY <- if (is.null(args$shape_by)) "Host" else if (args$shape_by == "NULL") NULL else args$shape_by
 SHOW_ELLIPSE <- args$ellipse
 SHOW_ARROWS <- args$arrows
 ELLIPSE_LEVEL <- 0.95
@@ -208,12 +202,12 @@ generate_colors <- function(categories) {
 }
 
 # Main plotting function
-create_pcoa_plot <- function(contig_type) {
+create_pcoa_plot <- function(contig_type, input_dir, file_prefix, base_prefix) {
   cat(sprintf("\n=== Creating plot for %s ===\n", contig_type))
   
-  coord_file <- sprintf("%s_%s_coordinates.csv", args$prefix, contig_type)
-  var_file <- sprintf("%s_%s_variance.csv", args$prefix, contig_type)
-  matrix_file <- sprintf("%s_%s_%s.csv", args$prefix, contig_type, config$matrix_suffix)
+  coord_file <- file.path(input_dir, sprintf("%s_%s_coordinates.csv", file_prefix, contig_type))
+  var_file <- file.path(input_dir, sprintf("%s_%s_variance.csv", file_prefix, contig_type))
+  matrix_file <- file.path(input_dir, sprintf("%s_%s_%s.csv", file_prefix, contig_type, config$matrix_suffix))
   
   if (!file.exists(coord_file)) {
     cat(sprintf("Coordinate file not found: %s\n", coord_file))
@@ -240,9 +234,17 @@ create_pcoa_plot <- function(contig_type) {
     top_vectors <- head(sig_vectors, N_TOP_ARROWS)
     
     if (nrow(sig_vectors) > 0) {
-      envfit_file <- sprintf("PCoA_%s_%s_%s_envfit.csv", 
-                              toupper(substr(args$type, 1, 1)), 
-                              contig_type, OUTPUT_SUFFIX)
+      # Extract group name from file_prefix if it exists
+      if (file_prefix != base_prefix && grepl("_", file_prefix, fixed = TRUE)) {
+        group_name <- sub(paste0("^", base_prefix, "_"), "", file_prefix)
+        envfit_file <- file.path(input_dir, sprintf("PCoA_%s_%s_%s_%s_envfit.csv", 
+                                toupper(substr(args$type, 1, 1)), 
+                                group_name, contig_type, OUTPUT_SUFFIX))
+      } else {
+        envfit_file <- file.path(input_dir, sprintf("PCoA_%s_%s_%s_envfit.csv", 
+                                toupper(substr(args$type, 1, 1)), 
+                                contig_type, OUTPUT_SUFFIX))
+      }
       write.csv(sig_vectors, envfit_file, row.names = FALSE)
       cat(sprintf("Envfit results saved to: %s\n", envfit_file))
     }
@@ -333,14 +335,72 @@ create_pcoa_plot <- function(contig_type) {
                       fontface = "italic")
   }
   
-  output_file <- sprintf("PCoA_%s_%s_%s.pdf", 
-                         toupper(substr(args$type, 1, 1)), 
-                         contig_type, OUTPUT_SUFFIX)
+  # Extract group name from file_prefix if it exists
+  # file_prefix format: {base_prefix} or {base_prefix}_{group_name}
+  if (file_prefix != base_prefix && grepl("_", file_prefix, fixed = TRUE)) {
+    # Extract group name by removing base_prefix and the underscore
+    group_name <- sub(paste0("^", base_prefix, "_"), "", file_prefix)
+    output_file <- file.path(input_dir, sprintf("PCoA_%s_%s_%s_%s.pdf", 
+                           toupper(substr(args$type, 1, 1)), 
+                           group_name, contig_type, OUTPUT_SUFFIX))
+  } else {
+    output_file <- file.path(input_dir, sprintf("PCoA_%s_%s_%s.pdf", 
+                           toupper(substr(args$type, 1, 1)), 
+                           contig_type, OUTPUT_SUFFIX))
+  }
+  
   ggsave(output_file, p, width = 12, height = 10)
   cat(sprintf("Plot saved to: %s\n", output_file))
   
   return(p)
 }
+
+# Function to find all coordinate files matching the prefix pattern
+find_coordinate_files <- function(prefix, input_dir) {
+  # Pattern: {prefix} or {prefix}_{group}_Chromosome/Plasmid_coordinates.csv
+  pattern <- sprintf("^%s(_[^_]+)?_(Chromosome|Plasmid)_coordinates\\.csv$", prefix)
+  
+  all_files <- list.files(input_dir, pattern = "\\.csv$", full.names = FALSE)
+  coord_files <- all_files[grepl(pattern, all_files)]
+  
+  if (length(coord_files) == 0) {
+    return(character(0))
+  }
+  
+  # Extract unique prefixes (base + optional group)
+  file_prefixes <- unique(sub("_(Chromosome|Plasmid)_coordinates\\.csv$", "", coord_files))
+  
+  return(file_prefixes)
+}
+
+# Determine input directory from prefix
+# Check if prefix contains a path (directory separator)
+if (grepl("[/\\\\]", args$prefix)) {
+  # Prefix contains path, extract directory and prefix
+  input_dir <- dirname(args$prefix)
+  base_prefix <- basename(args$prefix)
+} else {
+  # Prefix is just a name, use current directory
+  input_dir <- "."
+  base_prefix <- args$prefix
+}
+
+# Normalize input directory
+if (!dir.exists(input_dir)) {
+  stop(sprintf("Directory does not exist: %s\n", input_dir))
+}
+input_dir <- normalizePath(input_dir, mustWork = TRUE)
+cat(sprintf("Input directory: %s\n", input_dir))
+cat(sprintf("Base prefix: %s\n", base_prefix))
+
+# Find all coordinate files matching the prefix pattern
+file_prefixes <- find_coordinate_files(base_prefix, input_dir)
+
+if (length(file_prefixes) == 0) {
+  stop(sprintf("Cannot find any coordinate files with prefix '%s' in directory '%s'.\n", base_prefix, input_dir))
+}
+
+cat(sprintf("Found %d file prefix(es): %s\n", length(file_prefixes), paste(file_prefixes, collapse = ", ")))
 
 # Run plotting
 cat("\n========================================\n")
@@ -353,14 +413,32 @@ cat(sprintf("  Shape by: %s\n", ifelse(is.null(SHAPE_BY), "None", SHAPE_BY)))
 cat(sprintf("  Show ellipse: %s (level=%.0f%%)\n", SHOW_ELLIPSE, ELLIPSE_LEVEL*100))
 cat(sprintf("  Show arrows: %s\n", SHOW_ARROWS))
 
-p_chr <- create_pcoa_plot("Chromosome")
-p_pla <- create_pcoa_plot("Plasmid")
+# Process each file prefix
+all_plots <- list()
+for (file_prefix in file_prefixes) {
+  cat(sprintf("\n>>> Processing prefix: %s <<<\n", file_prefix))
+  
+  p_chr <- create_pcoa_plot("Chromosome", input_dir, file_prefix, base_prefix)
+  p_pla <- create_pcoa_plot("Plasmid", input_dir, file_prefix, base_prefix)
+  
+  all_plots[[file_prefix]] <- list(chr = p_chr, pla = p_pla)
+}
 
 cat("\n========================================\n")
 cat("Plotting Complete!\n")
 cat("========================================\n")
-cat(sprintf("\nOutput files:\n"))
-cat(sprintf("  - PCoA_%s_Chromosome_%s.pdf\n", toupper(substr(args$type, 1, 1)), OUTPUT_SUFFIX))
-cat(sprintf("  - PCoA_%s_Plasmid_%s.pdf\n", toupper(substr(args$type, 1, 1)), OUTPUT_SUFFIX))
+cat(sprintf("\nOutput directory: %s\n", input_dir))
+cat(sprintf("Output files:\n"))
+for (file_prefix in file_prefixes) {
+  if (file_prefix != base_prefix) {
+    group_name <- sub(paste0("^", base_prefix, "_"), "", file_prefix)
+    cat(sprintf("  Group '%s':\n", group_name))
+    cat(sprintf("    - PCoA_%s_%s_Chromosome_%s.pdf\n", toupper(substr(args$type, 1, 1)), group_name, OUTPUT_SUFFIX))
+    cat(sprintf("    - PCoA_%s_%s_Plasmid_%s.pdf\n", toupper(substr(args$type, 1, 1)), group_name, OUTPUT_SUFFIX))
+  } else {
+    cat(sprintf("  - PCoA_%s_Chromosome_%s.pdf\n", toupper(substr(args$type, 1, 1)), OUTPUT_SUFFIX))
+    cat(sprintf("  - PCoA_%s_Plasmid_%s.pdf\n", toupper(substr(args$type, 1, 1)), OUTPUT_SUFFIX))
+  }
+}
 cat("\nTo customize the plot, use command line arguments.\n")
 
