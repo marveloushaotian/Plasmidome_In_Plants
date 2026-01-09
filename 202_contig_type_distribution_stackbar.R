@@ -1,31 +1,65 @@
-# Load required libraries
-library(ggplot2)
-library(tidyr)
-library(dplyr)
-library(stringr)
+#!/usr/bin/env Rscript
 
-# 固定的21色，用于SubType
+# =============================================================================
+# Contig Type Distribution Stacked Bar Charts
+# Description: Generate stacked bar charts showing distribution of gene subtypes
+#              (Defense_Subtype, AntiDS_Type, AMR_Type) by Host and Contig_Type
+#              Creates both percentage and count visualizations
+# Usage: Rscript 202_contig_type_distribution_stackbar.R -i <input.csv> -o <output_dir> [-n <top_n>]
+#
+# Arguments:
+#   -i: Input CSV file path (required)
+#   -o: Output base directory for results (required)
+#   -n: Number of top subtypes to show (others merged into "Others") (default: 20)
+# =============================================================================
+
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(tidyr)
+  library(dplyr)
+  library(stringr)
+  library(argparse)
+})
+
+# Parse command line arguments
+parser <- ArgumentParser(description = "Generate stacked bar charts for gene subtype distribution")
+parser$add_argument("-i", "--input", required = TRUE,
+                    help = "Input CSV file path (e.g., Contig_Sample_Mapping_Final.csv)")
+parser$add_argument("-o", "--output", required = TRUE,
+                    help = "Output base directory for results")
+parser$add_argument("-n", "--top-n", type = "integer", default = 20,
+                    help = "Number of top subtypes to show, others merged to 'Others' (default: 20)")
+
+args <- parser$parse_args()
+
+# Fixed 21 colors for SubType
 subtype_colors <- c(
   "#434d91","#6566aa","#9b7baa","#c6a4c5","#c6f0ec","#8fced1","#53a4a6","#d0cab7","#c0dbe6",
   "#509d95","#75b989","#92ca77","#d6ecc1","#e7ee9f","#f7ded5","#faaf7f","#f07e40","#dc5772",
   "#ebc1d1","#f9e7e7","#d1d9e2"
 )
 
-# ===== 新增：创建子目录 functions =====
+# Function to ensure directory exists
 ensure_dir <- function(path) {
-  if(!dir.exists(path)) dir.create(path, recursive = TRUE)
+  if(!dir.exists(path)) {
+    dir.create(path, recursive = TRUE)
+    cat(sprintf("Created directory: %s\n", path))
+  }
 }
 
-# percentage和count输出目录
+# Output subdirectories
 output_dirs <- list(
-  pct = "Result/NCBI_4395_Batch/02_Gene_Percentage/percentage",
-  count = "Result/NCBI_4395_Batch/02_Gene_Percentage/count"
+  pct = file.path(args$output, "percentage"),
+  count = file.path(args$output, "count")
 )
-# 创建
+
+# Create output directories
+cat(sprintf("Output base directory: %s\n", args$output))
 lapply(output_dirs, ensure_dir)
 
 # Read data
-data <- read.csv('Result/NCBI_4395_Batch/Contig_Sample_Mapping_Final.csv', header=TRUE, check.names=FALSE)
+cat(sprintf("Reading data from: %s\n", args$input))
+data <- read.csv(args$input, header = TRUE, check.names = FALSE, stringsAsFactors = FALSE)
 
 # 合并Virus和Provirus到Virus
 data_processed <- data %>%
@@ -94,17 +128,20 @@ for (subtype in names(subtype_list)) {
     summarise(Global_Count = n()) %>%
     arrange(desc(Global_Count))
 
-  # 获得计数前20的Subtype
-  top_20_subtypes <- global_subtype_count$Subtype[1:min(20, nrow(global_subtype_count))]
+  # Get top N subtypes based on global count
+  top_n_subtypes <- global_subtype_count$Subtype[1:min(args$top_n, nrow(global_subtype_count))]
   all_subtypes <- global_subtype_count$Subtype
-  # 设定最终的levels顺序，前20+Others（总共最多21个）
-  # 与颜色一致，levels要丰度高的在最下，Others在最上
-  final_subtype_order <- rev(c(top_20_subtypes, "Others"))
+  cat(sprintf("  Found %d unique subtypes, selecting top %d\n", 
+              length(all_subtypes), length(top_n_subtypes)))
+  
+  # Set final levels order: top N + Others (max N+1 categories)
+  # Colors: highest abundance at bottom, Others at top
+  final_subtype_order <- rev(c(top_n_subtypes, "Others"))
 
-  # 标记"Others"
+  # Mark "Others" for subtypes not in top N
   df_expanded <- df_expanded %>%
     mutate(
-      Subtype = ifelse(!!sym(subtype_col) %in% top_20_subtypes, !!sym(subtype_col), "Others")
+      Subtype = ifelse(!!sym(subtype_col) %in% top_n_subtypes, !!sym(subtype_col), "Others")
     )
 
   # 统计计数(已经合并Others)
@@ -244,14 +281,19 @@ for (subtype in names(subtype_list)) {
   )
 }
 
-cat("分析已顺利完成！\n")
-cat("已生成文件：\n")
+cat("\n========================================\n")
+cat("Analysis completed successfully!\n")
+cat("========================================\n")
+cat(sprintf("\nOutput directory: %s\n", args$output))
+cat(sprintf("Generated files:\n"))
 for (subtype in names(subtype_list)) {
+  cat(sprintf("  %s:\n", subtype))
   for (ct in contig_order) {
-    cat(sprintf("  - %s/%s_distribution_percentage_byhost_%s.pdf\n", output_dirs[["pct"]], tolower(subtype), tolower(ct)))
-    cat(sprintf("  - %s/%s_distribution_count_byhost_%s.pdf\n", output_dirs[["count"]], tolower(subtype), tolower(ct)))
+    cat(sprintf("    - percentage/%s_distribution_percentage_byhost_%s.pdf\n", tolower(subtype), tolower(ct)))
+    cat(sprintf("    - count/%s_distribution_count_byhost_%s.pdf\n", tolower(subtype), tolower(ct)))
   }
-  cat(sprintf("  - %s/%s_distribution_count.csv\n", output_dirs[["count"]], tolower(subtype)))
-  cat(sprintf("  - %s/%s_distribution_percentage.csv\n", output_dirs[["pct"]], tolower(subtype)))
+  cat(sprintf("    - count/%s_distribution_count.csv\n", tolower(subtype)))
+  cat(sprintf("    - percentage/%s_distribution_percentage.csv\n", tolower(subtype)))
 }
+cat("\n")
 

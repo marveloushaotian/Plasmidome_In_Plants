@@ -20,6 +20,7 @@ suppressPackageStartupMessages({
   library(dplyr)
   library(ape)
   library(argparse)
+  library(broom)
 })
 
 # Parse command line arguments
@@ -74,6 +75,21 @@ df <- read.csv(args$input, stringsAsFactors = FALSE, check.names = FALSE)
 
 # Get input file directory for output files
 input_dir <- dirname(normalizePath(args$input, mustWork = TRUE))
+
+# Create output subdirectories directly under input directory
+coord_subdir <- file.path(input_dir, "01_coordinates")
+variance_subdir <- file.path(input_dir, "02_variance")
+matrix_subdir <- file.path(input_dir, "03_matrix")
+permanova_subdir <- file.path(input_dir, "04_permanova")
+
+# Create all subdirectories
+dirs_to_create <- list(coord_subdir, variance_subdir, matrix_subdir, permanova_subdir)
+for (dir_path in dirs_to_create) {
+  if (!dir.exists(dir_path)) {
+    dir.create(dir_path, recursive = TRUE)
+    cat(sprintf("Created directory: %s\n", dir_path))
+  }
+}
 
 # Get numeric gene type columns
 all_cols <- colnames(df)
@@ -139,19 +155,115 @@ create_gene_matrix_by_sample <- function(data, contig_type, gene_cols) {
   return(list(matrix = gene_matrix, sample_info = sample_info))
 }
 
+# Function to run PERMANOVA test
+run_permanova <- function(dist_matrix, sample_info, group_var, output_prefix, contig_type, permanova_dir) {
+  cat(sprintf("\n--- Running PERMANOVA test for %s ---\n", group_var))
+
+  # Check if group variable exists and has enough variation
+  if (!group_var %in% colnames(sample_info)) {
+    cat(sprintf("Warning: Variable '%s' not found in sample info, skipping PERMANOVA\n", group_var))
+    return(NULL)
+  }
+
+  # Remove samples with missing group values
+  valid_samples <- !is.na(sample_info[[group_var]]) & sample_info[[group_var]] != ""
+  if (sum(valid_samples) < 3) {
+    cat(sprintf("Warning: Not enough samples with valid '%s' values for PERMANOVA\n", group_var))
+    return(NULL)
+  }
+
+  # Check if there are at least 2 groups
+  n_groups <- length(unique(sample_info[[group_var]][valid_samples]))
+  if (n_groups < 2) {
+    cat(sprintf("Warning: Only %d group(s) found for '%s', PERMANOVA requires at least 2 groups\n",
+                n_groups, group_var))
+    return(NULL)
+  }
+
+  # Ensure distance matrix and sample_info are aligned
+  common_samples <- intersect(attr(dist_matrix, "Labels"), sample_info$Sample_ID)
+  if (length(common_samples) < 3) {
+    cat("Warning: Not enough common samples between distance matrix and sample info\n")
+    return(NULL)
+  }
+
+  # Reorder sample_info to match distance matrix
+  sample_info_matched <- sample_info %>%
+    filter(Sample_ID %in% common_samples) %>%
+    arrange(match(Sample_ID, attr(dist_matrix, "Labels")))
+
+  # Create formula
+  formula_str <- as.formula(paste0("dist_matrix ~ ", group_var))
+
+  # Run PERMANOVA with 9999 permutations
+  set.seed(123)
+  permanova_result <- tryCatch({
+    adonis2(formula_str,
+            data = sample_info_matched,
+            permutations = 9999,
+            method = "bray")
+  }, error = function(e) {
+    cat(sprintf("Error running PERMANOVA: %s\n", e$message))
+    return(NULL)
+  })
+
+  if (is.null(permanova_result)) return(NULL)
+
+  # Print results
+  cat("\nPERMANOVA Results:\n")
+  print(permanova_result)
+  cat("\n")
+
+  # Save results to permanova subdirectory
+  permanova_file <- file.path(permanova_dir,
+                               sprintf("%s_%s_PERMANOVA_%s.txt",
+                                       output_prefix, contig_type, group_var))
+
+  # Write results to file
+  sink(permanova_file)
+  cat(sprintf("PERMANOVA Test Results for %s\n", contig_type))
+  cat(sprintf("Testing factor: %s\n", group_var))
+  cat(sprintf("Number of groups: %d\n", n_groups))
+  cat(sprintf("Number of samples: %d\n\n", nrow(sample_info_matched)))
+  print(permanova_result)
+  sink()
+
+  cat(sprintf("PERMANOVA results saved to: %s\n", permanova_file))
+
+  # Also save as CSV for easier parsing
+  permanova_csv <- file.path(permanova_dir,
+                             sprintf("%s_%s_PERMANOVA_%s.csv",
+                                     output_prefix, contig_type, group_var))
+
+  # Extract key statistics
+  permanova_summary <- data.frame(
+    Factor = group_var,
+    Df = permanova_result$Df[1],
+    SumOfSqs = permanova_result$SumOfSqs[1],
+    R2 = permanova_result$R2[1],
+    F_statistic = permanova_result$F[1],
+    P_value = permanova_result$`Pr(>F)`[1]
+  )
+
+  write.csv(permanova_summary, permanova_csv, row.names = FALSE)
+  cat(sprintf("PERMANOVA summary saved to: %s\n\n", permanova_csv))
+
+  return(permanova_result)
+}
+
 # Function to run PCoA and save results
-run_pcoa_calculation <- function(data, contig_type, output_prefix, gene_cols, matrix_suffix, output_dir) {
+run_pcoa_calculation <- function(data, contig_type, output_prefix, gene_cols, matrix_suffix, base_dir) {
   cat(sprintf("=== Processing %s ===\n", contig_type))
-  
+
   result <- create_gene_matrix_by_sample(data, contig_type, gene_cols)
   if (is.null(result)) {
     cat(sprintf("No data for %s\n\n", contig_type))
     return(NULL)
   }
-  
+
   gene_matrix <- result$matrix
   sample_info <- result$sample_info
-  
+
   cat(sprintf("Number of samples: %d\n", nrow(gene_matrix)))
   
   # Remove samples with no genes
@@ -186,17 +298,33 @@ run_pcoa_calculation <- function(data, contig_type, output_prefix, gene_cols, ma
     gene_matrix_for_dist <- gene_matrix_binary
     dist_matrix <- vegdist(gene_matrix_for_dist, method = "jaccard", binary = TRUE)
   }
-  
+
+  # Run PERMANOVA tests for key grouping variables
+  permanova_dir <- file.path(base_dir, "04_permanova")
+  cat("\n")
+  permanova_vars <- c("Host", "Class_CRBC")
+  permanova_results <- list()
+
+  for (var in permanova_vars) {
+    if (var %in% colnames(sample_info_nonzero)) {
+      permanova_res <- run_permanova(dist_matrix, sample_info_nonzero, var,
+                                      output_prefix, contig_type, permanova_dir)
+      if (!is.null(permanova_res)) {
+        permanova_results[[var]] <- permanova_res
+      }
+    }
+  }
+
   cat("Running PCoA...\n")
   set.seed(123)
-  
+
   pcoa_result <- tryCatch({
     pcoa(dist_matrix, correction = "cailliez")
   }, error = function(e) {
     cat(sprintf("Error in PCoA: %s\n", e$message))
     return(NULL)
   })
-  
+
   if (is.null(pcoa_result)) return(NULL)
   
   # Calculate variance explained
@@ -205,9 +333,19 @@ run_pcoa_calculation <- function(data, contig_type, output_prefix, gene_cols, ma
   variance_explained <- eigenvalues / sum(eigenvalues) * 100
   
   cat(sprintf("PCoA Axis 1 variance explained: %.2f%%\n", variance_explained[1]))
-  cat(sprintf("PCoA Axis 2 variance explained: %.2f%%\n", variance_explained[2]))
+  if (length(variance_explained) >= 2) {
+    cat(sprintf("PCoA Axis 2 variance explained: %.2f%%\n", variance_explained[2]))
+  } else {
+    cat("PCoA Axis 2 variance explained: Not available\n")
+  }
   
-  # Extract scores
+  # Extract scores - check if we have at least 2 axes
+  n_axes_available <- min(2, ncol(pcoa_result$vectors))
+  if (n_axes_available < 2) {
+    cat("Warning: Only one PCoA axis available. Cannot proceed with 2D analysis.\n")
+    return(NULL)
+  }
+  
   pcoa_scores <- as.data.frame(pcoa_result$vectors[, 1:2])
   colnames(pcoa_scores) <- c("PCoA1", "PCoA2")
   pcoa_scores$Sample_ID <- rownames(pcoa_scores)
@@ -236,75 +374,107 @@ run_pcoa_calculation <- function(data, contig_type, output_prefix, gene_cols, ma
   
   n_outliers <- sum(outlier_idx, na.rm = TRUE)
   max_outlier_pct <- if (args$type == "antidefense") 0.3 else 1.0
+  min_samples_after_removal <- 10  # Minimum samples needed for meaningful PCoA with 2 axes
   
   if (n_outliers > 0 && n_outliers < nrow(plot_data) * max_outlier_pct) {
-    cat(sprintf("Removing %d outliers (%.2f%%)\n", n_outliers, n_outliers/nrow(plot_data)*100))
-    
-    plot_data <- plot_data[!outlier_idx, ]
-    keep_samples <- plot_data$Sample_ID
-    
-    # Update matrices based on whether we're using counts or binary
-    if (args$use_counts) {
-      # Filter the original clean matrix and recalculate binary
-      gene_matrix_clean <- gene_matrix_clean[rownames(gene_matrix_clean) %in% keep_samples, , drop = FALSE]
-      gene_matrix_clean <- gene_matrix_clean[, colSums(gene_matrix_clean) > 0, drop = FALSE]
-      gene_matrix_binary <- (gene_matrix_clean > 0) * 1
-      gene_matrix_for_dist <- gene_matrix_clean
+    remaining_samples <- nrow(plot_data) - n_outliers
+    if (remaining_samples < min_samples_after_removal) {
+      cat(sprintf("Skipping outlier removal: removing %d outliers would leave only %d samples (< %d minimum)\n", 
+                  n_outliers, remaining_samples, min_samples_after_removal))
     } else {
-      gene_matrix_binary <- gene_matrix_binary[rownames(gene_matrix_binary) %in% keep_samples, , drop = FALSE]
-      gene_matrix_binary <- gene_matrix_binary[, colSums(gene_matrix_binary) > 0, drop = FALSE]
-      gene_matrix_for_dist <- gene_matrix_binary
-    }
-    
-    # Check if we still have enough samples and gene types after outlier removal
-    if (nrow(gene_matrix_for_dist) < 3) {
-      cat("Not enough samples after outlier removal\n")
-      return(NULL)
-    }
-    if (ncol(gene_matrix_for_dist) < 2) {
-      cat("Not enough gene types after outlier removal\n")
-      return(NULL)
-    }
-    
-    cat(sprintf("Remaining samples: %d\n", nrow(plot_data)))
-    
-    # Re-run PCoA
-    cat("Re-running PCoA on cleaned data...\n")
-    if (args$use_counts) {
-      dist_matrix <- vegdist(gene_matrix_for_dist, method = "bray")
-    } else {
-      dist_matrix <- vegdist(gene_matrix_for_dist, method = "jaccard", binary = TRUE)
-    }
-    
-    pcoa_result_new <- tryCatch({
-      pcoa(dist_matrix, correction = "cailliez")
-    }, error = function(e) {
-      if (args$type == "antidefense") {
-        cat(sprintf("Warning: PCoA failed after outlier removal (%s)\n", e$message))
-        cat("Keeping original PCoA results without outlier removal.\n")
-        return(NULL)
+      cat(sprintf("Removing %d outliers (%.2f%%)\n", n_outliers, n_outliers/nrow(plot_data)*100))
+      
+      plot_data <- plot_data[!outlier_idx, ]
+      keep_samples <- plot_data$Sample_ID
+      
+      # Update matrices based on whether we're using counts or binary
+      if (args$use_counts) {
+        # Filter the original clean matrix and recalculate binary
+        gene_matrix_clean <- gene_matrix_clean[rownames(gene_matrix_clean) %in% keep_samples, , drop = FALSE]
+        gene_matrix_clean <- gene_matrix_clean[, colSums(gene_matrix_clean) > 0, drop = FALSE]
+        gene_matrix_binary <- (gene_matrix_clean > 0) * 1
+        gene_matrix_for_dist <- gene_matrix_clean
       } else {
-        stop(e)
+        gene_matrix_binary <- gene_matrix_binary[rownames(gene_matrix_binary) %in% keep_samples, , drop = FALSE]
+        gene_matrix_binary <- gene_matrix_binary[, colSums(gene_matrix_binary) > 0, drop = FALSE]
+        gene_matrix_for_dist <- gene_matrix_binary
       }
-    })
-    
-    if (!is.null(pcoa_result_new)) {
-      pcoa_result <- pcoa_result_new
       
-      eigenvalues <- pcoa_result$values$Eigenvalues
-      eigenvalues[eigenvalues < 0] <- 0
-      variance_explained <- eigenvalues / sum(eigenvalues) * 100
+      # Check if we still have enough samples and gene types after outlier removal
+      if (nrow(gene_matrix_for_dist) < 3) {
+        cat("Not enough samples after outlier removal\n")
+        return(NULL)
+      }
+      if (ncol(gene_matrix_for_dist) < 2) {
+        cat("Not enough gene types after outlier removal\n")
+        return(NULL)
+      }
       
-      cat(sprintf("PCoA Axis 1 (after outlier removal): %.2f%%\n", variance_explained[1]))
-      cat(sprintf("PCoA Axis 2 (after outlier removal): %.2f%%\n", variance_explained[2]))
+      cat(sprintf("Remaining samples: %d\n", nrow(plot_data)))
       
-      # Update scores
-      pcoa_scores <- as.data.frame(pcoa_result$vectors[, 1:2])
-      colnames(pcoa_scores) <- c("PCoA1", "PCoA2")
-      pcoa_scores$Sample_ID <- rownames(pcoa_scores)
+      # Re-run PCoA
+      cat("Re-running PCoA on cleaned data...\n")
+      if (args$use_counts) {
+        dist_matrix <- vegdist(gene_matrix_for_dist, method = "bray")
+      } else {
+        dist_matrix <- vegdist(gene_matrix_for_dist, method = "jaccard", binary = TRUE)
+      }
+
+      # Re-run PERMANOVA tests on cleaned data
+      cat("\nRe-running PERMANOVA tests on cleaned data...\n")
+      permanova_results_clean <- list()
+      for (var in permanova_vars) {
+        if (var %in% colnames(plot_data)) {
+          permanova_res <- run_permanova(dist_matrix, plot_data, var,
+                                          paste0(output_prefix, "_cleaned"),
+                                          contig_type, permanova_dir)
+          if (!is.null(permanova_res)) {
+            permanova_results_clean[[var]] <- permanova_res
+          }
+        }
+      }
+
+      pcoa_result_new <- tryCatch({
+        pcoa(dist_matrix, correction = "cailliez")
+      }, error = function(e) {
+        if (args$type == "antidefense") {
+          cat(sprintf("Warning: PCoA failed after outlier removal (%s)\n", e$message))
+          cat("Keeping original PCoA results without outlier removal.\n")
+          return(NULL)
+        } else {
+          stop(e)
+        }
+      })
       
-      plot_data <- pcoa_scores %>%
-        left_join(sample_info_nonzero, by = "Sample_ID")
+      if (!is.null(pcoa_result_new)) {
+        pcoa_result <- pcoa_result_new
+        
+        eigenvalues <- pcoa_result$values$Eigenvalues
+        eigenvalues[eigenvalues < 0] <- 0
+        variance_explained <- eigenvalues / sum(eigenvalues) * 100
+        
+        cat(sprintf("PCoA Axis 1 (after outlier removal): %.2f%%\n", variance_explained[1]))
+        if (length(variance_explained) >= 2) {
+          cat(sprintf("PCoA Axis 2 (after outlier removal): %.2f%%\n", variance_explained[2]))
+        } else {
+          cat("PCoA Axis 2 (after outlier removal): Not available (only one axis)\n")
+        }
+        
+        # Check number of available axes
+        n_axes_available <- min(2, ncol(pcoa_result$vectors))
+        if (n_axes_available < 2) {
+          cat(sprintf("Warning: Only %d axis available after outlier removal. Using original PCoA results.\n", n_axes_available))
+          # Revert to original results - don't update plot_data
+        } else {
+          # Update scores
+          pcoa_scores <- as.data.frame(pcoa_result$vectors[, 1:2])
+          colnames(pcoa_scores) <- c("PCoA1", "PCoA2")
+          pcoa_scores$Sample_ID <- rownames(pcoa_scores)
+          
+          plot_data <- pcoa_scores %>%
+            left_join(sample_info_nonzero, by = "Sample_ID")
+        }
+      }
     }
   } else if (n_outliers > 0) {
     cat(sprintf("Skipping outlier removal (too many outliers: %d, %.2f%%)\n", 
@@ -313,8 +483,13 @@ run_pcoa_calculation <- function(data, contig_type, output_prefix, gene_cols, ma
     cat("No outliers detected.\n")
   }
   
+  # Use subdirectories directly under base directory
+  coord_subdir <- file.path(base_dir, "01_coordinates")
+  variance_subdir <- file.path(base_dir, "02_variance")
+  matrix_subdir <- file.path(base_dir, "03_matrix")
+  
   # Save PCoA coordinates with metadata
-  coord_file <- file.path(output_dir, sprintf("%s_%s_coordinates.csv", output_prefix, contig_type))
+  coord_file <- file.path(coord_subdir, sprintf("%s_%s_coordinates.csv", output_prefix, contig_type))
   write.csv(plot_data, coord_file, row.names = FALSE)
   cat(sprintf("Coordinates saved to: %s\n", coord_file))
   
@@ -325,13 +500,13 @@ run_pcoa_calculation <- function(data, contig_type, output_prefix, gene_cols, ma
     Variance_Explained_Pct = variance_explained[1:min(10, length(variance_explained))],
     Cumulative_Variance_Pct = cumsum(variance_explained)[1:min(10, length(variance_explained))]
   )
-  var_file <- file.path(output_dir, sprintf("%s_%s_variance.csv", output_prefix, contig_type))
+  var_file <- file.path(variance_subdir, sprintf("%s_%s_variance.csv", output_prefix, contig_type))
   write.csv(var_df, var_file, row.names = FALSE)
   cat(sprintf("Variance explained saved to: %s\n", var_file))
   
   # Save gene matrix (binary) for envfit in step2
   # Note: Always save binary version for compatibility with step2 plotting script
-  matrix_file <- file.path(output_dir, sprintf("%s_%s_%s.csv", output_prefix, contig_type, matrix_suffix))
+  matrix_file <- file.path(matrix_subdir, sprintf("%s_%s_%s.csv", output_prefix, contig_type, matrix_suffix))
   gene_df <- as.data.frame(gene_matrix_binary)
   gene_df$Sample_ID <- rownames(gene_matrix_binary)
   gene_df <- gene_df %>% select(Sample_ID, everything())
@@ -356,6 +531,7 @@ process_group <- function(data_subset, group_name = NULL) {
     output_prefix <- args$output
   }
   
+  # Pass base output directory to function (it will use subdirectories internally)
   result_chr <- run_pcoa_calculation(data_subset, "Chromosome", output_prefix, 
                                       existing_gene_cols, config$matrix_suffix, input_dir)
   result_pla <- run_pcoa_calculation(data_subset, "Plasmid", output_prefix, 
@@ -411,7 +587,11 @@ for (result_name in names(all_results)) {
   cat("\n")
 }
 
-cat("Output directory: ", input_dir, "\n")
-cat("Output files saved to input file directory.\n")
-cat(sprintf("\nRun 214_step2_pcoa_plot.R to create customized plots.\n"))
+cat("\nOutput directory: ", input_dir, "\n")
+cat("Output files saved to subdirectories:\n")
+cat("  - 01_coordinates/  (coordinate files)\n")
+cat("  - 02_variance/     (variance files)\n")
+cat("  - 03_matrix/       (matrix files)\n")
+cat("  - 04_permanova/    (PERMANOVA test results)\n")
+cat(sprintf("\nRun 214_step2_pcoa_plot_split.R to create customized plots.\n"))
 

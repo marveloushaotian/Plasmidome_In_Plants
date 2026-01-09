@@ -16,6 +16,7 @@
 #   -e: Show ellipse (default: TRUE)
 #   -a: Show arrows (default: TRUE)
 #   -o: Output suffix (default: final)
+#   --factor-arrows: Comma-separated factor variables to show as envfit arrows (e.g., 'Host,Class_CRBC')
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -36,12 +37,14 @@ parser$add_argument("-c", "--color-by", default = NULL,
                     help = "Optional color by variable (default: Class_CRBC if not specified)")
 parser$add_argument("-s", "--shape-by", default = NULL,
                     help = "Optional shape by variable (default: Host if not specified, use 'NULL' for none)")
-parser$add_argument("-e", "--ellipse", action = "store_true", default = TRUE,
-                    help = "Show confidence ellipses")
+parser$add_argument("-e", "--ellipse", action = "store_true", default = FALSE,
+                    help = "Show confidence ellipses (default: FALSE)")
 parser$add_argument("-a", "--arrows", action = "store_true", default = TRUE,
                     help = "Show gene arrows (envfit)")
 parser$add_argument("-o", "--output-suffix", default = "final",
                     help = "Output file suffix (default: final)")
+parser$add_argument("--factor-arrows", default = NULL,
+                    help = "Comma-separated list of factor variables to show as envfit arrows (e.g., 'Host,Class_CRBC')")
 
 args <- parser$parse_args()
 
@@ -75,6 +78,7 @@ ELLIPSE_LEVEL <- 0.95
 N_TOP_ARROWS <- 15
 ARROW_PVAL <- 0.05
 ARROW_R2 <- 0.05
+FACTOR_ARROWS <- if (!is.null(args$factor_arrows)) strsplit(args$factor_arrows, ",")[[1]] else NULL
 POINT_SIZE <- 2.5
 POINT_ALPHA <- 0.6
 OUTPUT_SUFFIX <- args$output_suffix
@@ -98,6 +102,120 @@ host_shapes <- c(
   "Wheat" = 15,
   "Maize" = 18
 )
+
+# Function to calculate envfit arrows for factor variables (e.g., Host)
+# Uses centroid-based approach: calculates group centroids and their correlation with PCoA axes
+calculate_factor_envfit <- function(plot_data, factor_vars) {
+  cat("Calculating factor variable arrows (envfit)...\n")
+  
+  pcoa_coords <- as.matrix(plot_data[, c("PCoA1", "PCoA2")])
+  factor_df <- data.frame()
+  
+  for (fvar in factor_vars) {
+    if (!fvar %in% colnames(plot_data)) {
+      cat(sprintf("  Warning: Factor variable '%s' not found in data, skipping.\n", fvar))
+      next
+    }
+    
+    factor_vec <- plot_data[[fvar]]
+    if (all(is.na(factor_vec))) {
+      cat(sprintf("  Warning: Factor variable '%s' has all NA values, skipping.\n", fvar))
+      next
+    }
+    
+    # Remove NA values
+    valid_idx <- !is.na(factor_vec)
+    factor_vec_clean <- factor_vec[valid_idx]
+    pcoa_clean <- pcoa_coords[valid_idx, , drop = FALSE]
+    
+    levels_vec <- unique(factor_vec_clean)
+    n_levels <- length(levels_vec)
+    
+    if (n_levels < 2) {
+      cat(sprintf("  Warning: Factor variable '%s' has only %d level(s), skipping.\n", fvar, n_levels))
+      next
+    }
+    
+    cat(sprintf("  Processing factor '%s' with %d levels: %s\n", 
+                fvar, n_levels, paste(levels_vec, collapse = ", ")))
+    
+    # Calculate centroids for each level
+    centroids <- matrix(0, nrow = n_levels, ncol = 2)
+    for (i in seq_along(levels_vec)) {
+      idx <- factor_vec_clean == levels_vec[i]
+      centroids[i, 1] <- mean(pcoa_clean[idx, 1])
+      centroids[i, 2] <- mean(pcoa_clean[idx, 2])
+    }
+    
+    # Create dummy variables for correlation analysis
+    dummy_mat <- matrix(0, nrow = length(factor_vec_clean), ncol = n_levels)
+    colnames(dummy_mat) <- levels_vec
+    for (i in seq_along(levels_vec)) {
+      dummy_mat[factor_vec_clean == levels_vec[i], i] <- 1
+    }
+    
+    # Calculate envfit-style vectors for each level
+    for (i in seq_along(levels_vec)) {
+      level_name <- levels_vec[i]
+      dummy_vec <- dummy_mat[, i]
+      
+      # Skip if all same value (shouldn't happen but just in case)
+      if (sd(dummy_vec) == 0) next
+      
+      # Correlation with PCoA axes
+      cor1 <- cor(dummy_vec, pcoa_clean[, 1])
+      cor2 <- cor(dummy_vec, pcoa_clean[, 2])
+      r2 <- cor1^2 + cor2^2
+      
+      # Permutation test
+      n_perm <- 999
+      perm_r2 <- numeric(n_perm)
+      for (j in 1:n_perm) {
+        perm_vec <- sample(dummy_vec)
+        perm_cor1 <- cor(perm_vec, pcoa_clean[, 1])
+        perm_cor2 <- cor(perm_vec, pcoa_clean[, 2])
+        perm_r2[j] <- perm_cor1^2 + perm_cor2^2
+      }
+      pval <- (sum(perm_r2 >= r2) + 1) / (n_perm + 1)
+      
+      # Normalize vector
+      vec_length <- sqrt(cor1^2 + cor2^2)
+      if (vec_length > 0) {
+        norm_cor1 <- cor1 / vec_length * sqrt(r2)
+        norm_cor2 <- cor2 / vec_length * sqrt(r2)
+      } else {
+        norm_cor1 <- 0
+        norm_cor2 <- 0
+      }
+      
+      factor_df <- rbind(factor_df, data.frame(
+        factor_var = fvar,
+        level = level_name,
+        label = sprintf("%s: %s", fvar, level_name),
+        PCoA1 = norm_cor1,
+        PCoA2 = norm_cor2,
+        centroid_x = centroids[i, 1],
+        centroid_y = centroids[i, 2],
+        pval = pval,
+        r2 = r2,
+        stringsAsFactors = FALSE
+      ))
+    }
+  }
+  
+  if (nrow(factor_df) > 0) {
+    sig_factors <- factor_df %>%
+      filter(pval < ARROW_PVAL) %>%
+      arrange(desc(r2))
+    
+    cat(sprintf("  Significant factor levels (p<%.2f): %d out of %d\n", 
+                ARROW_PVAL, nrow(sig_factors), nrow(factor_df)))
+    
+    return(sig_factors)
+  }
+  
+  return(data.frame())
+}
 
 # Function to calculate envfit arrows
 calculate_envfit_arrows <- function(plot_data, gene_matrix, label_prefix) {
@@ -202,12 +320,14 @@ generate_colors <- function(categories) {
 }
 
 # Main plotting function
-create_pcoa_plot <- function(contig_type, input_dir, file_prefix, base_prefix) {
+create_pcoa_plot <- function(contig_type, coord_input_dir, variance_input_dir, matrix_input_dir,
+                              plots_output_dir, envfit_output_dir, factor_envfit_output_dir,
+                              file_prefix, base_prefix) {
   cat(sprintf("\n=== Creating plot for %s ===\n", contig_type))
   
-  coord_file <- file.path(input_dir, sprintf("%s_%s_coordinates.csv", file_prefix, contig_type))
-  var_file <- file.path(input_dir, sprintf("%s_%s_variance.csv", file_prefix, contig_type))
-  matrix_file <- file.path(input_dir, sprintf("%s_%s_%s.csv", file_prefix, contig_type, config$matrix_suffix))
+  coord_file <- file.path(coord_input_dir, sprintf("%s_%s_coordinates.csv", file_prefix, contig_type))
+  var_file <- file.path(variance_input_dir, sprintf("%s_%s_variance.csv", file_prefix, contig_type))
+  matrix_file <- file.path(matrix_input_dir, sprintf("%s_%s_%s.csv", file_prefix, contig_type, config$matrix_suffix))
   
   if (!file.exists(coord_file)) {
     cat(sprintf("Coordinate file not found: %s\n", coord_file))
@@ -237,11 +357,11 @@ create_pcoa_plot <- function(contig_type, input_dir, file_prefix, base_prefix) {
       # Extract group name from file_prefix if it exists
       if (file_prefix != base_prefix && grepl("_", file_prefix, fixed = TRUE)) {
         group_name <- sub(paste0("^", base_prefix, "_"), "", file_prefix)
-        envfit_file <- file.path(input_dir, sprintf("PCoA_%s_%s_%s_%s_envfit.csv", 
+        envfit_file <- file.path(envfit_output_dir, sprintf("PCoA_%s_%s_%s_%s_envfit.csv", 
                                 toupper(substr(args$type, 1, 1)), 
                                 group_name, contig_type, OUTPUT_SUFFIX))
       } else {
-        envfit_file <- file.path(input_dir, sprintf("PCoA_%s_%s_%s_envfit.csv", 
+        envfit_file <- file.path(envfit_output_dir, sprintf("PCoA_%s_%s_%s_envfit.csv", 
                                 toupper(substr(args$type, 1, 1)), 
                                 contig_type, OUTPUT_SUFFIX))
       }
@@ -269,6 +389,30 @@ create_pcoa_plot <- function(contig_type, input_dir, file_prefix, base_prefix) {
     top_vectors$gene_label <- gsub(config$label_prefix, "", top_vectors$gene)
   }
   
+  # Calculate factor variable arrows (e.g., Host)
+  factor_vectors <- data.frame()
+  if (!is.null(FACTOR_ARROWS) && length(FACTOR_ARROWS) > 0) {
+    factor_vectors <- calculate_factor_envfit(plot_data, FACTOR_ARROWS)
+    if (nrow(factor_vectors) > 0) {
+      factor_vectors$x_end <- factor_vectors$PCoA1 * arrow_scale
+      factor_vectors$y_end <- factor_vectors$PCoA2 * arrow_scale
+      
+      # Save factor envfit results
+      if (file_prefix != base_prefix && grepl("_", file_prefix, fixed = TRUE)) {
+        group_name <- sub(paste0("^", base_prefix, "_"), "", file_prefix)
+        factor_envfit_file <- file.path(factor_envfit_output_dir, sprintf("PCoA_%s_%s_%s_%s_factor_envfit.csv", 
+                                toupper(substr(args$type, 1, 1)), 
+                                group_name, contig_type, OUTPUT_SUFFIX))
+      } else {
+        factor_envfit_file <- file.path(factor_envfit_output_dir, sprintf("PCoA_%s_%s_%s_factor_envfit.csv", 
+                                toupper(substr(args$type, 1, 1)), 
+                                contig_type, OUTPUT_SUFFIX))
+      }
+      write.csv(factor_vectors, factor_envfit_file, row.names = FALSE)
+      cat(sprintf("Factor envfit results saved to: %s\n", factor_envfit_file))
+    }
+  }
+  
   cat("Building plot...\n")
   
   if (!is.null(SHAPE_BY) && SHAPE_BY %in% colnames(plot_data)) {
@@ -278,14 +422,15 @@ create_pcoa_plot <- function(contig_type, input_dir, file_prefix, base_prefix) {
     p <- ggplot(plot_data, aes_string(x = "PCoA1", y = "PCoA2", color = color_var))
   }
   
-  if (SHOW_ELLIPSE) {
-    p <- p + stat_ellipse(aes_string(fill = color_var, group = color_var), 
-                          geom = "polygon", 
-                          alpha = 0.12, 
-                          level = ELLIPSE_LEVEL,
-                          type = "t",
-                          show.legend = FALSE)
-  }
+  # Confidence ellipses disabled by default
+  # if (SHOW_ELLIPSE) {
+  #   p <- p + stat_ellipse(aes_string(fill = color_var, group = color_var), 
+  #                         geom = "polygon", 
+  #                         alpha = 0.12, 
+  #                         level = ELLIPSE_LEVEL,
+  #                         type = "t",
+  #                         show.legend = FALSE)
+  # }
   
   p <- p + geom_point(alpha = POINT_ALPHA, size = POINT_SIZE)
   p <- p + scale_color_manual(values = color_palette, name = gsub("_CRBC", "", color_var))
@@ -335,16 +480,38 @@ create_pcoa_plot <- function(contig_type, input_dir, file_prefix, base_prefix) {
                       fontface = "italic")
   }
   
+  # Add factor variable arrows (e.g., Host)
+  if (nrow(factor_vectors) > 0) {
+    # Define colors for factor arrows (different from gene arrows)
+    factor_arrow_colors <- c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", 
+                             "#FF7F00", "#FFFF33", "#A65628", "#F781BF")
+    unique_levels <- unique(factor_vectors$level)
+    level_colors <- setNames(factor_arrow_colors[1:length(unique_levels)], unique_levels)
+    
+    p <- p +
+      geom_segment(data = factor_vectors,
+                   aes(x = 0, y = 0, xend = x_end, yend = y_end, color = level),
+                   arrow = arrow(length = unit(0.25, "cm")),
+                   linewidth = 1.2, inherit.aes = FALSE, show.legend = FALSE) +
+      geom_text_repel(data = factor_vectors,
+                      aes(x = x_end * 1.1, y = y_end * 1.1, label = level),
+                      color = "black", size = 3.5, inherit.aes = FALSE,
+                      max.overlaps = 20, segment.color = NA,
+                      fontface = "bold") +
+      scale_color_manual(values = c(color_palette, level_colors), 
+                         name = gsub("_CRBC", "", color_var))
+  }
+  
   # Extract group name from file_prefix if it exists
   # file_prefix format: {base_prefix} or {base_prefix}_{group_name}
   if (file_prefix != base_prefix && grepl("_", file_prefix, fixed = TRUE)) {
     # Extract group name by removing base_prefix and the underscore
     group_name <- sub(paste0("^", base_prefix, "_"), "", file_prefix)
-    output_file <- file.path(input_dir, sprintf("PCoA_%s_%s_%s_%s.pdf", 
+    output_file <- file.path(plots_output_dir, sprintf("PCoA_%s_%s_%s_%s.pdf", 
                            toupper(substr(args$type, 1, 1)), 
                            group_name, contig_type, OUTPUT_SUFFIX))
   } else {
-    output_file <- file.path(input_dir, sprintf("PCoA_%s_%s_%s.pdf", 
+    output_file <- file.path(plots_output_dir, sprintf("PCoA_%s_%s_%s.pdf", 
                            toupper(substr(args$type, 1, 1)), 
                            contig_type, OUTPUT_SUFFIX))
   }
@@ -377,27 +544,57 @@ find_coordinate_files <- function(prefix, input_dir) {
 # Check if prefix contains a path (directory separator)
 if (grepl("[/\\\\]", args$prefix)) {
   # Prefix contains path, extract directory and prefix
-  input_dir <- dirname(args$prefix)
+  base_input_dir <- dirname(args$prefix)
   base_prefix <- basename(args$prefix)
 } else {
   # Prefix is just a name, use current directory
-  input_dir <- "."
+  base_input_dir <- "."
   base_prefix <- args$prefix
 }
 
-# Normalize input directory
-if (!dir.exists(input_dir)) {
-  stop(sprintf("Directory does not exist: %s\n", input_dir))
+# Normalize base input directory
+if (!dir.exists(base_input_dir)) {
+  stop(sprintf("Directory does not exist: %s\n", base_input_dir))
 }
-input_dir <- normalizePath(input_dir, mustWork = TRUE)
-cat(sprintf("Input directory: %s\n", input_dir))
+base_input_dir <- normalizePath(base_input_dir, mustWork = TRUE)
+
+# Input subdirectories for reading data (directly under base_input_dir)
+coord_input_dir <- file.path(base_input_dir, "01_coordinates")
+variance_input_dir <- file.path(base_input_dir, "02_variance")
+matrix_input_dir <- file.path(base_input_dir, "03_matrix")
+
+if (!dir.exists(coord_input_dir)) {
+  stop(sprintf("Coordinates directory not found: %s\nPlease run 213_step1_pcoa_calculate_split.R first.\n", coord_input_dir))
+}
+
+# Create output subdirectories for PCoA plots (directly under base_input_dir)
+plots_output_dir <- file.path(base_input_dir, "05_plots")
+envfit_output_dir <- file.path(base_input_dir, "06_envfit")
+factor_envfit_output_dir <- file.path(base_input_dir, "07_factor_envfit")
+
+# Create all output subdirectories
+output_dirs <- list(plots_output_dir, envfit_output_dir, factor_envfit_output_dir)
+for (dir_path in output_dirs) {
+  if (!dir.exists(dir_path)) {
+    dir.create(dir_path, recursive = TRUE)
+    cat(sprintf("Created directory: %s\n", dir_path))
+  }
+}
+
+cat(sprintf("Base input directory: %s\n", base_input_dir))
+cat(sprintf("Reading coordinates from: %s\n", coord_input_dir))
+cat(sprintf("Reading variance from: %s\n", variance_input_dir))
+cat(sprintf("Reading matrix from: %s\n", matrix_input_dir))
+cat(sprintf("Writing plots to: %s\n", plots_output_dir))
+cat(sprintf("Writing envfit to: %s\n", envfit_output_dir))
+cat(sprintf("Writing factor_envfit to: %s\n", factor_envfit_output_dir))
 cat(sprintf("Base prefix: %s\n", base_prefix))
 
 # Find all coordinate files matching the prefix pattern
-file_prefixes <- find_coordinate_files(base_prefix, input_dir)
+file_prefixes <- find_coordinate_files(base_prefix, coord_input_dir)
 
 if (length(file_prefixes) == 0) {
-  stop(sprintf("Cannot find any coordinate files with prefix '%s' in directory '%s'.\n", base_prefix, input_dir))
+  stop(sprintf("Cannot find any coordinate files with prefix '%s' in directory '%s'.\n", base_prefix, coord_input_dir))
 }
 
 cat(sprintf("Found %d file prefix(es): %s\n", length(file_prefixes), paste(file_prefixes, collapse = ", ")))
@@ -412,14 +609,19 @@ cat(sprintf("  Color by: %s\n", COLOR_BY))
 cat(sprintf("  Shape by: %s\n", ifelse(is.null(SHAPE_BY), "None", SHAPE_BY)))
 cat(sprintf("  Show ellipse: %s (level=%.0f%%)\n", SHOW_ELLIPSE, ELLIPSE_LEVEL*100))
 cat(sprintf("  Show arrows: %s\n", SHOW_ARROWS))
+cat(sprintf("  Factor arrows: %s\n", ifelse(is.null(FACTOR_ARROWS), "None", paste(FACTOR_ARROWS, collapse = ", "))))
 
 # Process each file prefix
 all_plots <- list()
 for (file_prefix in file_prefixes) {
   cat(sprintf("\n>>> Processing prefix: %s <<<\n", file_prefix))
   
-  p_chr <- create_pcoa_plot("Chromosome", input_dir, file_prefix, base_prefix)
-  p_pla <- create_pcoa_plot("Plasmid", input_dir, file_prefix, base_prefix)
+  p_chr <- create_pcoa_plot("Chromosome", coord_input_dir, variance_input_dir, matrix_input_dir,
+                              plots_output_dir, envfit_output_dir, factor_envfit_output_dir,
+                              file_prefix, base_prefix)
+  p_pla <- create_pcoa_plot("Plasmid", coord_input_dir, variance_input_dir, matrix_input_dir,
+                              plots_output_dir, envfit_output_dir, factor_envfit_output_dir,
+                              file_prefix, base_prefix)
   
   all_plots[[file_prefix]] <- list(chr = p_chr, pla = p_pla)
 }
@@ -427,17 +629,28 @@ for (file_prefix in file_prefixes) {
 cat("\n========================================\n")
 cat("Plotting Complete!\n")
 cat("========================================\n")
-cat(sprintf("\nOutput directory: %s\n", input_dir))
-cat(sprintf("Output files:\n"))
+cat(sprintf("\nOutput directories:\n"))
+cat(sprintf("  Plots: %s\n", plots_output_dir))
+cat(sprintf("  Envfit: %s\n", envfit_output_dir))
+cat(sprintf("  Factor Envfit: %s\n", factor_envfit_output_dir))
+cat(sprintf("\nOutput files:\n"))
 for (file_prefix in file_prefixes) {
   if (file_prefix != base_prefix) {
     group_name <- sub(paste0("^", base_prefix, "_"), "", file_prefix)
     cat(sprintf("  Group '%s':\n", group_name))
-    cat(sprintf("    - PCoA_%s_%s_Chromosome_%s.pdf\n", toupper(substr(args$type, 1, 1)), group_name, OUTPUT_SUFFIX))
-    cat(sprintf("    - PCoA_%s_%s_Plasmid_%s.pdf\n", toupper(substr(args$type, 1, 1)), group_name, OUTPUT_SUFFIX))
+    cat(sprintf("    Plots:\n"))
+    cat(sprintf("      - 05_plots/PCoA_%s_%s_Chromosome_%s.pdf\n", toupper(substr(args$type, 1, 1)), group_name, OUTPUT_SUFFIX))
+    cat(sprintf("      - 05_plots/PCoA_%s_%s_Plasmid_%s.pdf\n", toupper(substr(args$type, 1, 1)), group_name, OUTPUT_SUFFIX))
+    cat(sprintf("    Envfit:\n"))
+    cat(sprintf("      - 06_envfit/PCoA_%s_%s_Chromosome_%s_envfit.csv\n", toupper(substr(args$type, 1, 1)), group_name, OUTPUT_SUFFIX))
+    cat(sprintf("      - 06_envfit/PCoA_%s_%s_Plasmid_%s_envfit.csv\n", toupper(substr(args$type, 1, 1)), group_name, OUTPUT_SUFFIX))
   } else {
-    cat(sprintf("  - PCoA_%s_Chromosome_%s.pdf\n", toupper(substr(args$type, 1, 1)), OUTPUT_SUFFIX))
-    cat(sprintf("  - PCoA_%s_Plasmid_%s.pdf\n", toupper(substr(args$type, 1, 1)), OUTPUT_SUFFIX))
+    cat(sprintf("  Plots:\n"))
+    cat(sprintf("    - 05_plots/PCoA_%s_Chromosome_%s.pdf\n", toupper(substr(args$type, 1, 1)), OUTPUT_SUFFIX))
+    cat(sprintf("    - 05_plots/PCoA_%s_Plasmid_%s.pdf\n", toupper(substr(args$type, 1, 1)), OUTPUT_SUFFIX))
+    cat(sprintf("  Envfit:\n"))
+    cat(sprintf("    - 06_envfit/PCoA_%s_Chromosome_%s_envfit.csv\n", toupper(substr(args$type, 1, 1)), OUTPUT_SUFFIX))
+    cat(sprintf("    - 06_envfit/PCoA_%s_Plasmid_%s_envfit.csv\n", toupper(substr(args$type, 1, 1)), OUTPUT_SUFFIX))
   }
 }
 cat("\nTo customize the plot, use command line arguments.\n")

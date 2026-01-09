@@ -1,25 +1,43 @@
 #!/usr/bin/env Rscript
 
-# Load required libraries
+# =============================================================================
+# Calculate Defense System Richness (Alpha Diversity)
+# Description: Calculate and visualize richness (number of unique types) for
+#              Defense_Type, AntiDS_Type, and AMR_Type per sample
+#              Generates boxplots and summary statistics
+# Usage: Rscript 203_calculate_defense_richness.R -i <input.csv> -o <output_dir>
+#
+# Arguments:
+#   -i: Input CSV file path (required)
+#   -o: Output directory for results (required)
+# =============================================================================
+
 suppressPackageStartupMessages({
   library(data.table)
   library(ggplot2)
   library(dplyr)
   library(tidyr)
+  library(argparse)
 })
 
-# Step 1: Set input and output paths
-input_file <- "Result/NCBI_4395_Batch/Contig_Sample_Mapping_Final.csv"
-output_dir <- "Result/NCBI_4395_Batch/03_Alpha_Diversity"
+# Parse command line arguments
+parser <- ArgumentParser(description = "Calculate defense system richness (alpha diversity)")
+parser$add_argument("-i", "--input", required = TRUE,
+                    help = "Input CSV file path (e.g., Contig_Sample_Mapping_Final.csv)")
+parser$add_argument("-o", "--output", required = TRUE,
+                    help = "Output directory for results")
 
-# Step 2: Create output directory if not exists
-if (!dir.exists(output_dir)) {
-  dir.create(output_dir, recursive = TRUE)
+args <- parser$parse_args()
+
+# Create output directory if not exists
+if (!dir.exists(args$output)) {
+  dir.create(args$output, recursive = TRUE)
+  cat(sprintf("Created output directory: %s\n", args$output))
 }
 
-# Step 3: Read input data
-cat("Reading input data...\n")
-data <- fread(input_file, header = TRUE, stringsAsFactors = FALSE)
+# Read input data
+cat(sprintf("Reading input data from: %s\n", args$input))
+data <- fread(args$input, header = TRUE, stringsAsFactors = FALSE)
 cat(sprintf("Loaded %d rows and %d columns\n", nrow(data), ncol(data)))
 
 # Step 4: Function to split comma-separated values and count unique items
@@ -86,7 +104,7 @@ richness_data <- all_samples %>%
   )
 
 # Step 9: Save richness data
-output_file <- file.path(output_dir, "defense_richness_by_sample.csv")
+output_file <- file.path(args$output, "defense_richness_by_sample.csv")
 cat(sprintf("Saving richness data to %s...\n", output_file))
 fwrite(richness_data, output_file)
 
@@ -120,7 +138,7 @@ p1 <- ggplot(richness_data, aes(x = Contig_Type, y = Defense_Richness, fill = Ho
     y = "Defense System Richness"
   )
 
-pdf_file <- file.path(output_dir, "Defense_Richness_by_Host_ContigType.pdf")
+pdf_file <- file.path(args$output, "Defense_Richness_by_Host_ContigType.pdf")
 ggsave(pdf_file, p1, width = 12, height = 10)
 cat(sprintf("Saved plot to %s\n", pdf_file))
 
@@ -143,7 +161,7 @@ p2 <- ggplot(richness_data, aes(x = Contig_Type, y = AntiDS_Richness, fill = Hos
     y = "Anti-Defense System Richness"
   )
 
-pdf_file <- file.path(output_dir, "AntiDS_Richness_by_Host_ContigType.pdf")
+pdf_file <- file.path(args$output, "AntiDS_Richness_by_Host_ContigType.pdf")
 ggsave(pdf_file, p2, width = 12, height = 10)
 cat(sprintf("Saved plot to %s\n", pdf_file))
 
@@ -166,7 +184,7 @@ p3 <- ggplot(richness_data, aes(x = Contig_Type, y = AMR_Richness, fill = Host))
     y = "AMR Type Richness"
   )
 
-pdf_file <- file.path(output_dir, "AMR_Richness_by_Host_ContigType.pdf")
+pdf_file <- file.path(args$output, "AMR_Richness_by_Host_ContigType.pdf")
 ggsave(pdf_file, p3, width = 12, height = 10)
 cat(sprintf("Saved plot to %s\n", pdf_file))
 
@@ -191,7 +209,7 @@ p4 <- ggplot(richness_long, aes(x = Contig_Type, y = Richness, fill = Type)) +
     fill = "System Type"
   )
 
-pdf_file <- file.path(output_dir, "Combined_Richness_by_Host_ContigType.pdf")
+pdf_file <- file.path(args$output, "Combined_Richness_by_Host_ContigType.pdf")
 ggsave(pdf_file, p4, width = 14, height = 12)
 cat(sprintf("Saved plot to %s\n", pdf_file))
 
@@ -213,10 +231,20 @@ summary_stats <- richness_data %>%
     .groups = "drop"
   )
 
-summary_file <- file.path(output_dir, "richness_summary_statistics.csv")
+summary_file <- file.path(args$output, "richness_summary_statistics.csv")
 fwrite(summary_stats, summary_file)
 cat(sprintf("Saved summary statistics to %s\n", summary_file))
 
-cat("\nAnalysis completed successfully!\n")
-cat(sprintf("Results saved in: %s\n", output_dir))
+cat("\n========================================\n")
+cat("Analysis completed successfully!\n")
+cat("========================================\n")
+cat(sprintf("\nOutput directory: %s\n", args$output))
+cat(sprintf("Output files:\n"))
+cat(sprintf("  - defense_richness_by_sample.csv\n"))
+cat(sprintf("  - Defense_Richness_by_Host_ContigType.pdf\n"))
+cat(sprintf("  - AntiDS_Richness_by_Host_ContigType.pdf\n"))
+cat(sprintf("  - AMR_Richness_by_Host_ContigType.pdf\n"))
+cat(sprintf("  - Combined_Richness_by_Host_ContigType.pdf\n"))
+cat(sprintf("  - richness_summary_statistics.csv\n"))
+cat("\n")
 
