@@ -17,7 +17,7 @@ params.checkm_mode       = "single"              // "single" (incremental, recom
 params.checkm2_db        = "/home/projects/ku_00041/data/PEACE/Haotian/Data/CheckM2/CheckM2_database/uniref100.KO.1"  // CheckM2 database path (without .dmnd extension)
 
 params.genomad_db        = "/home/projects/ku_00041/data/PEACE/Haotian/Data/geNomad/genomad_db"
-params.gtdbtk_db         = "/projects/somicrobiology/data/CRBC_CropMicrobiomeBacteria/ketao/gtdbtk_db/release226"
+params.gtdbtk_db         = "/home/projects/ku_00041/data/PEACE/Haotian/Data/GTDB/release226"
 
 // Optional analyses
 params.run_gtdbtk        = false                 // Enable GTDB-Tk classification (disabled by default, very time-consuming)

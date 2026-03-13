@@ -7,9 +7,9 @@ process MOBSUITE_RECON {
     tuple val(sample_id), path(fasta)
     
     output:
-    tuple val(sample_id), path("*.fasta"), emit: plasmid_fastas, optional: true
-    tuple val(sample_id), path("${sample_id}_contig_report.txt"), emit: contig_report, optional: true
-    path "*.txt", emit: all_reports, optional: true
+    tuple val(sample_id), path("*.fasta"), emit: plasmid_fastas optional true
+    tuple val(sample_id), path("${sample_id}_contig_report.txt"), emit: contig_report optional true
+    path "*.txt", emit: all_reports optional true
     
     script:
     """
@@ -70,7 +70,7 @@ process MOBSUITE_TYPER {
     tuple val(sample_id), path(fasta)
     
     output:
-    tuple val(sample_id), path("${sample_id}_mobtyper.tsv"), emit: typing_result, optional: true
+    tuple val(sample_id), path("${sample_id}_mobtyper.tsv"), emit: typing_result optional true
     
     script:
     """

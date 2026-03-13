@@ -61,12 +61,12 @@ process PROKKA_ANNOTATE {
     tuple val(sample_id), path(sanitized_fasta)
     
     output:
-    tuple val(sample_id), path("${sample_id}.gff"), emit: gff, optional: true
-    tuple val(sample_id), path("${sample_id}.faa"), emit: proteins, optional: true
-    tuple val(sample_id), path("${sample_id}.ffn"), emit: genes, optional: true
-    tuple val(sample_id), path("${sample_id}.gbk"), emit: genbank, optional: true
-    path "${sample_id}.txt", emit: stats, optional: true
-    path "*.log", emit: logs, optional: true
+    tuple val(sample_id), path("${sample_id}.gff"), emit: gff optional true
+    tuple val(sample_id), path("${sample_id}.faa"), emit: proteins optional true
+    tuple val(sample_id), path("${sample_id}.ffn"), emit: genes optional true
+    tuple val(sample_id), path("${sample_id}.gbk"), emit: genbank optional true
+    path "${sample_id}.txt", emit: stats optional true
+    path "*.log", emit: logs optional true
     
     script:
     """
