@@ -10,6 +10,7 @@ them to a new TSV file.
 Usage example:
   python 222_extract_original_after_first_pipe.py \
     -i Result/NCBI_4395_Batch/07_Network/transfer_network/mmseq_overall_contigs_cluster.rename_map.tsv \
+    -o Result/NCBI_4395_Batch/07_Network/transfer_network/mmseq_overall_contigs_cluster.original_after_first_pipe.unique.tsv
 """
 
 import argparse
