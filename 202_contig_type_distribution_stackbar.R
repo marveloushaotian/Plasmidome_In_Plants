@@ -61,7 +61,33 @@ lapply(output_dirs, ensure_dir)
 cat(sprintf("Reading data from: %s\n", args$input))
 data <- read.csv(args$input, header = TRUE, check.names = FALSE, stringsAsFactors = FALSE)
 
-# 合并Virus和Provirus到Virus
+# 基于Sample_ID和Host计算每个基因组类型的总kb（每个Sample_ID只计一次）
+length_by_host_type <- data %>%
+  filter(Host != "") %>%
+  select(Host, Sample_ID, chromosome_length, plasmid_length, virus_length) %>%
+  distinct() %>%
+  group_by(Host) %>%
+  summarise(
+    Total_Chromosome_kb = sum(chromosome_length, na.rm = TRUE) / 1000,
+    Total_Plasmid_kb    = sum(plasmid_length,    na.rm = TRUE) / 1000,
+    Total_Virus_kb      = sum(virus_length,      na.rm = TRUE) / 1000,
+    .groups = "drop"
+  ) %>%
+  tidyr::pivot_longer(
+    cols = starts_with("Total_"),
+    names_to = "Contig_Type",
+    values_to = "Total_Length_kb"
+  ) %>%
+  mutate(
+    Contig_Type = dplyr::recode(
+      Contig_Type,
+      "Total_Chromosome_kb" = "Chromosome",
+      "Total_Plasmid_kb"    = "Plasmid",
+      "Total_Virus_kb"      = "Virus"
+    )
+  )
+
+# 合并Virus和Provirus到Virus，并过滤Host和Contig_Type为空的行
 data_processed <- data %>%
   mutate(
     Contig_Type = ifelse(Contig_Type %in% c("Virus", "Provirus"), "Virus", Contig_Type)
@@ -147,25 +173,48 @@ for (subtype in names(subtype_list)) {
   # 统计计数(已经合并Others)
   count_subtype <- df_expanded %>%
     group_by(Host, Contig_Type, Subtype) %>%
-    summarise(Count = n(), .groups = 'drop')
+  summarise(Count = n(), .groups = 'drop') %>%
+  # 合并每个Host/Contig_Type下的总kb，用于per kb归一化
+  left_join(length_by_host_type, by = c("Host", "Contig_Type")) %>%
+  mutate(
+    Count_per_kb = ifelse(
+      !is.na(Total_Length_kb) & Total_Length_kb > 0,
+      Count / Total_Length_kb,
+      NA_real_
+    )
+  )
 
-  # 计算百分比 (以每个Host/Contig_Type为100%)
+  # 计算纯百分比（由count数据直接归一化得到）：
+  # 1) Percentage：基于Count归一化（每个Host/Contig_Type总和为100）
+  # 2) Percentage_perkb：基于Count_per_kb归一化（每个Host/Contig_Type总和为100）
   percentage_subtype <- count_subtype %>%
     group_by(Host, Contig_Type) %>%
     mutate(
       Total = sum(Count),
-      Percentage = (Count / Total) * 100
+      Percentage = ifelse(
+        Total > 0,
+        (Count / Total) * 100,
+        NA_real_
+      ),
+      Total_per_kb = sum(Count_per_kb, na.rm = TRUE),
+      Percentage_perkb = ifelse(
+        !is.na(Count_per_kb) & Total_per_kb > 0,
+        (Count_per_kb / Total_per_kb) * 100,
+        NA_real_
+      )
     ) %>%
     ungroup() %>%
-    select(-Total) %>%
-    # Ensure percentages sum to exactly 100% per group by adjusting rounding errors
+    # Keep pure percentage style while preventing tiny floating-point overflow
     group_by(Host, Contig_Type) %>%
     mutate(
-      Percentage = ifelse(Percentage > 100, 100, Percentage),  # Cap at 100
-      Sum_Pct = sum(Percentage),
-      Percentage = ifelse(Sum_Pct > 100, Percentage * (100 / Sum_Pct), Percentage)
+      Percentage = ifelse(Percentage > 100, 100, Percentage),
+      Sum_Pct = sum(Percentage, na.rm = TRUE),
+      Percentage = ifelse(Sum_Pct > 100, Percentage * (100 / Sum_Pct), Percentage),
+      Percentage_perkb = ifelse(Percentage_perkb > 100, 100, Percentage_perkb),
+      Sum_Pct_perkb = sum(Percentage_perkb, na.rm = TRUE),
+      Percentage_perkb = ifelse(Sum_Pct_perkb > 100, Percentage_perkb * (100 / Sum_Pct_perkb), Percentage_perkb)
     ) %>%
-    select(-Sum_Pct) %>%
+    select(-Sum_Pct, -Sum_Pct_perkb) %>%
     ungroup()
 
   # 水平与配色
@@ -228,6 +277,39 @@ for (subtype in names(subtype_list)) {
         file.path(output_dirs[["pct"]], sprintf("%s_distribution_percentage_byhost_%s.pdf", tolower(subtype), tolower(ct))),
         p_pct, width=10, height=7
       )
+
+      # 基于Count_per_kb归一化的纯百分比图（每个柱子总长100%）
+      if ("Percentage_perkb" %in% colnames(plot_pct)) {
+        p_pct_perkb <- ggplot(plot_pct, aes(x=Host, y=Percentage_perkb, fill=Subtype)) +
+          geom_bar(stat="identity", width=0.7) +
+          scale_fill_manual(
+            values=used_colors,
+            drop=FALSE,
+            breaks = rev(final_subtype_order)
+          ) +
+          theme_bw() +
+          theme(
+            axis.text.x = element_text(hjust=0.5, size=13),
+            axis.text.y = element_text(size=13),
+            axis.title.x = element_blank(),
+            axis.title.y = element_text(size=15),
+            legend.text = element_text(size=12),
+            legend.title = element_text(size=14),
+            legend.position="right"
+          ) +
+          guides(
+            fill = guide_legend(ncol = 1, reverse = TRUE)
+          ) +
+          labs(
+            y="Percentage per kb (%)",
+            fill=paste0(subtype, " perkb (", ct, ")")
+          ) +
+          scale_y_continuous(expand = c(0,0), limits = c(0,100), oob = scales::squish)
+        ggsave(
+          file.path(output_dirs[["pct"]], sprintf("%s_distribution_percentage_perkb_byhost_%s.pdf", tolower(subtype), tolower(ct))),
+          p_pct_perkb, width=10, height=7
+        )
+      }
     }
   }
 
@@ -266,6 +348,39 @@ for (subtype in names(subtype_list)) {
         file.path(output_dirs[["count"]], sprintf("%s_distribution_count_byhost_%s.pdf", tolower(subtype), tolower(ct))),
         p_count, width=10, height=7
       )
+
+      # 基于每kb的绝对数量图（Count_per_kb）
+      if ("Count_per_kb" %in% colnames(plot_count)) {
+        p_count_perkb <- ggplot(plot_count, aes(x=Host, y=Count_per_kb, fill=Subtype)) +
+          geom_bar(stat="identity", width=0.7) +
+          scale_fill_manual(
+            values=used_colors,
+            drop=FALSE,
+            breaks = rev(final_subtype_order)
+          ) +
+          theme_bw() +
+          theme(
+            axis.text.x = element_text(hjust=0.5, size=13),
+            axis.text.y = element_text(size=13),
+            axis.title.x = element_blank(),
+            axis.title.y = element_text(size=15),
+            legend.text = element_text(size=12),
+            legend.title = element_text(size=14),
+            legend.position="right"
+          ) +
+          guides(
+            fill = guide_legend(ncol = 1, reverse = TRUE)
+          ) +
+          labs(
+            y="Count per kb",
+            fill=paste0(subtype, " per kb (", ct, ")")
+          ) +
+          scale_y_continuous(expand=c(0,0))
+        ggsave(
+          file.path(output_dirs[["count"]], sprintf("%s_distribution_count_perkb_byhost_%s.pdf", tolower(subtype), tolower(ct))),
+          p_count_perkb, width=10, height=7
+        )
+      }
     }
   }
   # 保存数据
@@ -290,7 +405,9 @@ for (subtype in names(subtype_list)) {
   cat(sprintf("  %s:\n", subtype))
   for (ct in contig_order) {
     cat(sprintf("    - percentage/%s_distribution_percentage_byhost_%s.pdf\n", tolower(subtype), tolower(ct)))
+    cat(sprintf("    - percentage/%s_distribution_percentage_perkb_byhost_%s.pdf\n", tolower(subtype), tolower(ct)))
     cat(sprintf("    - count/%s_distribution_count_byhost_%s.pdf\n", tolower(subtype), tolower(ct)))
+    cat(sprintf("    - count/%s_distribution_count_perkb_byhost_%s.pdf\n", tolower(subtype), tolower(ct)))
   }
   cat(sprintf("    - count/%s_distribution_count.csv\n", tolower(subtype)))
   cat(sprintf("    - percentage/%s_distribution_percentage.csv\n", tolower(subtype)))

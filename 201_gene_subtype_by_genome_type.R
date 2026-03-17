@@ -1,17 +1,17 @@
 #!/usr/bin/env Rscript
 
 # =============================================================================
-# Statistics and Plots for Gene Subtypes
-# Description: Generate statistics and bar plots for top N subtypes of 
-#              Defense_Subtype, AntiDS_Type, and AMR_Type
-#              Counts subtypes by Host and Contig_Type, filters defense-related
-#              subtypes, and creates visualization
-# Usage: Rscript 201_statistics_plot.R -i <input.csv> -o <output_dir> [-n <top_n>]
+# Top-N Gene Subtype Plots by Host and Contig_Type2
+# Description: Plot top N subtypes as grouped bars for
+#              Defense_Subtype, AntiDS_Type, and AMR_Type.
+#              For each AMR subtype, show four hosts together.
+#              Generate separate plots for each Contig_Type2.
+# Usage: Rscript 201_gene_subtype_by_genome_type.R -i <input.csv> -o <output_dir> [-n <top_n>]
 #
 # Arguments:
 #   -i: Input CSV file path (required)
 #   -o: Output directory for results (required)
-#   -n: Number of top subtypes to analyze (default: 100)
+#   -n: Number of top subtypes to analyze for each type (default: 15)
 # =============================================================================
 
 # Load required libraries
@@ -24,13 +24,13 @@ suppressPackageStartupMessages({
 })
 
 # Parse command line arguments
-parser <- ArgumentParser(description = "Generate statistics and plots for gene subtypes")
+parser <- ArgumentParser(description = "Generate statistics and plots for top gene subtypes")
 parser$add_argument("-i", "--input", required = TRUE, 
                     help = "Input CSV file path (e.g., Contig_Sample_Mapping_Final.csv)")
 parser$add_argument("-o", "--output", required = TRUE,
                     help = "Output directory for results")
-parser$add_argument("-n", "--top-n", type = "integer", default = 100,
-                    help = "Number of top subtypes to analyze (default: 100)")
+parser$add_argument("-n", "--top-n", type = "integer", default = 15,
+                    help = "Number of top subtypes to analyze for each type (default: 15)")
 
 args <- parser$parse_args()
 
@@ -44,128 +44,183 @@ if (!dir.exists(args$output)) {
   cat(sprintf("Created output directory: %s\n", args$output))
 }
 
-# Merge Contig_Type (replace Provirus with Virus)
-chl <- dplyr::mutate(data,
-                     Contig_Type = dplyr::if_else(Contig_Type %in% c('Virus', 'Provirus'), 'Virus', Contig_Type))
-
-# Defense system subtypes to exclude (same as taxonomy_heatmap.R)
-defense_exclude_list <- c("VSPR", "dXTPase", "HEC-01", "HEC-09", "PifA")
-
-# Define function for splitting and counting subtypes, with optional defense filter
-# 额外: 对Defense_Subtype和AntiDS_Type需要过滤掉"Other"
-count_subtypes <- function(df, col_name, defense_filter = FALSE) {
-  res <- df %>%
-    select(Host, Contig_Type, all_of(col_name)) %>%
-    mutate(subtype = strsplit(.[[col_name]], ',')) %>%
-    unnest(subtype) %>%
-    mutate(subtype = trimws(subtype)) %>%
-    filter(!is.na(subtype), subtype != "") 
-  
-  # 筛选规则：
-  # - 防御类（defense_filter==TRUE）：去除defense_exclude_list和"Other"
-  # - 非防御类：不做特殊过滤
-  if (defense_filter) {
-    res <- res %>% filter(!(subtype %in% defense_exclude_list), tolower(subtype) != "other")
-  }
-  res %>%
-    count(Host, Contig_Type, subtype, sort = TRUE, name = 'count')
+# Validate required columns
+required_cols <- c("Host", "Sample_ID", "Contig_Type2", "chromosome_length", "plasmid_length", "virus_length")
+missing_cols <- setdiff(required_cols, colnames(data))
+if (length(missing_cols) > 0) {
+  stop(sprintf("Missing required columns: %s", paste(missing_cols, collapse = ", ")))
 }
 
-# Function to process and plot top N subtypes, all bars in gray, with optional defense filtering
-process_and_plot <- function(df, col_name, output_prefix, output_dir, top_n, defense_filter = FALSE) {
-  # Count subtypes
-  subtype_counts <- count_subtypes(df, col_name, defense_filter)
-  
-  # Get top N subtypes based on total count
+# Build total kb per Host and Contig_Type2 using unique Sample_ID
+length_by_host_ct2 <- data %>%
+  select(Host, Sample_ID, chromosome_length, plasmid_length, virus_length) %>%
+  mutate(Host = trimws(Host)) %>%
+  filter(!is.na(Host), Host != "", !is.na(Sample_ID), Sample_ID != "") %>%
+  distinct() %>%
+  tidyr::pivot_longer(
+    cols = c(chromosome_length, plasmid_length, virus_length),
+    names_to = "length_type",
+    values_to = "total_length_bp"
+  ) %>%
+  mutate(
+    Contig_Type2 = dplyr::recode(
+      length_type,
+      "chromosome_length" = "Chromosome",
+      "plasmid_length" = "Plasmid",
+      "virus_length" = "Virus"
+    )
+  ) %>%
+  group_by(Host, Contig_Type2) %>%
+  summarise(total_length_kb = sum(total_length_bp, na.rm = TRUE) / 1000, .groups = "drop")
+
+# Defense-related subtype names to exclude
+defense_exclude_list <- c("VSPR", "dXTPase", "HEC-01", "HEC-09", "PifA")
+
+# Process one subtype column and generate plots
+process_one_type <- function(df, col_name, output_prefix, top_n, defense_filter = FALSE) {
+  if (!(col_name %in% colnames(df))) {
+    cat(sprintf("Skipping %s: column not found.\n", col_name))
+    return(invisible(NULL))
+  }
+
+  subtype_counts <- df %>%
+    select(Host, Contig_Type2, all_of(col_name)) %>%
+    mutate(
+      Host = trimws(Host),
+      Contig_Type2 = dplyr::if_else(trimws(Contig_Type2) %in% c("Virus", "Provirus"), "Virus", trimws(Contig_Type2)),
+      subtype = strsplit(.[[col_name]], ",")
+    ) %>%
+    unnest(subtype) %>%
+    mutate(subtype = trimws(subtype)) %>%
+    filter(
+      !is.na(Host), Host != "",
+      !is.na(Contig_Type2), Contig_Type2 != "",
+      !is.na(subtype), subtype != ""
+    )
+
+  if (defense_filter) {
+    subtype_counts <- subtype_counts %>%
+      filter(!(subtype %in% defense_exclude_list), tolower(subtype) != "other")
+  }
+
+  subtype_counts <- subtype_counts %>%
+    count(Host, Contig_Type2, subtype, name = "count")
+
+  host_order <- subtype_counts %>%
+    group_by(Host) %>%
+    summarise(total_count = sum(count), .groups = "drop") %>%
+    arrange(desc(total_count)) %>%
+    slice_head(n = 4) %>%
+    pull(Host)
+
+  subtype_counts <- subtype_counts %>%
+    filter(Host %in% host_order)
+
   top_subtypes <- subtype_counts %>%
     group_by(subtype) %>%
-    summarise(total_count = sum(count), .groups = 'drop') %>%
+    summarise(total_count = sum(count), .groups = "drop") %>%
     arrange(desc(total_count)) %>%
     slice_head(n = top_n) %>%
     pull(subtype)
-  
-  cat(sprintf("  Found %d unique subtypes, selecting top %d\n", 
-              length(unique(subtype_counts$subtype)), length(top_subtypes)))
-  
-  # Keep only top N subtypes
-  counts_topN <- subtype_counts %>%
+
+  subtype_counts <- subtype_counts %>%
     filter(subtype %in% top_subtypes)
-  
-  # Fill in missing combinations with zeros
+
+  contig_type2_order <- sort(unique(subtype_counts$Contig_Type2))
   all_combos <- expand.grid(
-    Host = unique(counts_topN$Host),
-    Contig_Type = unique(counts_topN$Contig_Type),
+    Host = host_order,
+    Contig_Type2 = contig_type2_order,
     subtype = top_subtypes,
     stringsAsFactors = FALSE
   )
-  
-  counts_topN_full <- all_combos %>%
-    left_join(counts_topN, by = c("Host", "Contig_Type", "subtype")) %>%
-    mutate(count = ifelse(is.na(count), 0, count))
-  
-  # Set subtype as factor with descending order
-  subtype_levels <- counts_topN %>%
+
+  counts_top_full <- all_combos %>%
+    left_join(subtype_counts, by = c("Host", "Contig_Type2", "subtype")) %>%
+    mutate(count = ifelse(is.na(count), 0, count)) %>%
+    left_join(length_by_host_ct2, by = c("Host", "Contig_Type2")) %>%
+    mutate(
+      count_perkb = ifelse(
+        !is.na(total_length_kb) & total_length_kb > 0,
+        count / total_length_kb,
+        NA_real_
+      )
+    )
+
+  subtype_levels <- counts_top_full %>%
     group_by(subtype) %>%
-    summarise(total = sum(count), .groups = 'drop') %>%
+    summarise(total = sum(count), .groups = "drop") %>%
     arrange(desc(total)) %>%
     pull(subtype)
-  
-  counts_topN_full$subtype <- factor(counts_topN_full$subtype, levels = subtype_levels)
-  
-  # Save table
-  csv_file <- file.path(output_dir, paste0(output_prefix, '_Top', top_n, '_Counts_ByGroup.csv'))
-  write_csv(counts_topN_full, csv_file)
-  cat(sprintf("  Table saved to: %s\n", csv_file))
-  
-  # Plot (all gray)
-  p <- ggplot(counts_topN_full, aes(x = subtype, y = count)) +
-    geom_bar(stat = 'identity', position = 'dodge', fill = "gray60") +
-    facet_wrap(~Host + Contig_Type, scales = "fixed", ncol = 1) +
-    theme_bw() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 8)) +
-    labs(title = paste0('Top ', top_n, ' ', col_name, ' Counts by Host and Contig Type'),
-         x = col_name, y = 'Count')
-  
-  pdf_file <- file.path(output_dir, paste0(output_prefix, '_Top', top_n, '_Counts_ByGroup.pdf'))
-  ggsave(
-    pdf_file,
-    plot = p,
-    width = 20, height = 30,
-    limitsize = FALSE
-  )
-  cat(sprintf("  Plot saved to: %s\n", pdf_file))
-  
-  return(counts_topN_full)
+
+  counts_top_full <- counts_top_full %>%
+    mutate(
+      subtype = factor(subtype, levels = subtype_levels),
+      Host = factor(Host, levels = host_order),
+      Contig_Type2 = factor(Contig_Type2, levels = contig_type2_order)
+    )
+
+  csv_file <- file.path(args$output, paste0(output_prefix, "_Top", top_n, "_CountPerkb_ByHost_ContigType2.csv"))
+  write_csv(counts_top_full, csv_file)
+  cat(sprintf("Table saved to: %s\n", csv_file))
+  cat(sprintf("Selected hosts (top 4): %s\n", paste(host_order, collapse = ", ")))
+  cat(sprintf("Selected top %d subtypes for %s.\n", length(top_subtypes), col_name))
+
+  for (ct2 in contig_type2_order) {
+    plot_df <- counts_top_full %>%
+      filter(Contig_Type2 == ct2)
+
+    p <- ggplot(plot_df, aes(x = subtype, y = count_perkb, fill = Host)) +
+      geom_col(position = position_dodge(width = 0.8), width = 0.75) +
+      theme_bw() +
+      theme(
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 10),
+        axis.text.y = element_text(size = 11),
+        axis.title = element_text(size = 12),
+        legend.title = element_text(size = 11),
+        legend.text = element_text(size = 10)
+      ) +
+      labs(
+        title = paste0("Top ", length(top_subtypes), " ", col_name, " - ", ct2),
+        x = col_name,
+        y = "Count per kb",
+        fill = "Host"
+      )
+
+    ct2_file_tag <- gsub("[^A-Za-z0-9]+", "_", ct2)
+    pdf_file <- file.path(
+      args$output,
+      paste0(output_prefix, "_Top", top_n, "_CountPerkb_ByHost_", ct2_file_tag, ".pdf")
+    )
+    ggsave(pdf_file, plot = p, width = 16, height = 7)
+    cat(sprintf("Plot saved to: %s\n", pdf_file))
+  }
 }
 
-# Process Defense_Subtype (with defense filter, also remove "Other")
 cat("\n========================================\n")
 cat("Processing Defense_Subtype...\n")
 cat("========================================\n")
-defense_results <- process_and_plot(chl, 'Defense_Subtype', 'Defense_Subtype', 
-                                     args$output, args$top_n, defense_filter = TRUE)
+process_one_type(data, "Defense_Subtype", "Defense_Subtype", args$top_n, defense_filter = TRUE)
 
-# Process AntiDS_Type (with defense filter, also remove "Other")
 cat("\n========================================\n")
 cat("Processing AntiDS_Type...\n")
 cat("========================================\n")
-antids_results <- process_and_plot(chl, 'AntiDS_Type', 'AntiDS_Type', 
-                                     args$output, args$top_n, defense_filter = TRUE)
+process_one_type(data, "AntiDS_Type", "AntiDS_Type", args$top_n, defense_filter = TRUE)
 
-# Process AMR_Type (no filter)
 cat("\n========================================\n")
 cat("Processing AMR_Type...\n")
 cat("========================================\n")
-amr_results <- process_and_plot(chl, 'AMR_Type', 'AMR_Type', 
-                                 args$output, args$top_n, defense_filter = FALSE)
+process_one_type(data, "AMR_Type", "AMR_Type", args$top_n, defense_filter = FALSE)
 
 cat("\n========================================\n")
 cat("All processing completed!\n")
 cat("========================================\n")
 cat(sprintf("\nOutput directory: %s\n", args$output))
 cat(sprintf("Output files:\n"))
-cat(sprintf("  - Defense_Subtype_Top%d_Counts_ByGroup.csv/pdf\n", args$top_n))
-cat(sprintf("  - AntiDS_Type_Top%d_Counts_ByGroup.csv/pdf\n", args$top_n))
-cat(sprintf("  - AMR_Type_Top%d_Counts_ByGroup.csv/pdf\n", args$top_n))
+cat(sprintf("  - Defense_Subtype_Top%d_CountPerkb_ByHost_ContigType2.csv\n", args$top_n))
+cat(sprintf("  - Defense_Subtype_Top%d_CountPerkb_ByHost_<Contig_Type2>.pdf\n", args$top_n))
+cat(sprintf("  - AntiDS_Type_Top%d_CountPerkb_ByHost_ContigType2.csv\n", args$top_n))
+cat(sprintf("  - AntiDS_Type_Top%d_CountPerkb_ByHost_<Contig_Type2>.pdf\n", args$top_n))
+cat(sprintf("  - AMR_Type_Top%d_CountPerkb_ByHost_ContigType2.csv\n", args$top_n))
+cat(sprintf("  - AMR_Type_Top%d_CountPerkb_ByHost_<Contig_Type2>.pdf\n", args$top_n))
 cat("\n")
 
