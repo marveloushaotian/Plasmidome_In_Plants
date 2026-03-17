@@ -41,6 +41,7 @@ args <- parser$parse_args()
 # Configuration based on type
 type_config <- list(
   defense = list(
+    key = "defense",
     prefix = "^Defense_",
     exclude = c("Defense_VSPR", "Defense_dXTPase", "Defense_HEC-01", 
                 "Defense_HEC-09", "Defense_PifA"),
@@ -48,12 +49,14 @@ type_config <- list(
     matrix_suffix = "defense_matrix"
   ),
   amr = list(
+    key = "amr",
     prefix = "^AMR_",
     exclude = character(0),
     name = "AMR",
     matrix_suffix = "amr_matrix"
   ),
   antidefense = list(
+    key = "antidefense",
     prefix = "^AntiDS_",
     exclude = character(0),
     name = "AntiDefense",
@@ -62,6 +65,40 @@ type_config <- list(
 )
 
 config <- type_config[[args$type]]
+
+# Load whitelist columns from reference script (same format as 213_step1_pcoa_chro_plas.R)
+load_allowed_cols_from_reference <- function(type_key, reference_file) {
+  if (!file.exists(reference_file)) {
+    return(NULL)
+  }
+  lines <- readLines(reference_file, warn = FALSE)
+
+  block_start <- which(grepl(sprintf("^\\s*%s\\s*=\\s*list\\(", type_key), lines))
+  if (length(block_start) == 0) {
+    return(NULL)
+  }
+
+  start_idx <- block_start[1]
+  end_idx <- which(seq_along(lines) > start_idx & grepl("^\\s*\\),?\\s*$", lines))
+  if (length(end_idx) == 0) {
+    return(NULL)
+  }
+  block_lines <- lines[start_idx:end_idx[1]]
+
+  allowed_line_idx <- which(grepl("allowed_cols\\s*=\\s*strsplit\\(", block_lines))
+  if (length(allowed_line_idx) == 0) {
+    return(NULL)
+  }
+  allowed_line <- block_lines[allowed_line_idx[1]]
+
+  raw_str <- sub('^.*allowed_cols\\s*=\\s*strsplit\\("', "", allowed_line)
+  raw_str <- sub('",\\s*",".*$', "", raw_str)
+  if (identical(raw_str, allowed_line) || raw_str == "") {
+    return(NULL)
+  }
+
+  strsplit(raw_str, ",", fixed = TRUE)[[1]]
+}
 
 cat(sprintf("=== Step 1: PCoA Calculation for %s ===\n\n", config$name))
 cat(sprintf("Reading data from: %s\n", args$input))
@@ -100,20 +137,31 @@ for (dir_path in dirs_to_create) {
 
 # Get numeric gene type columns
 all_cols <- colnames(df)
-gene_like <- all_cols[grepl(config$prefix, all_cols)]
-existing_gene_cols <- gene_like[sapply(df[1:min(100, nrow(df)), gene_like], function(x) is.numeric(x))]
+reference_whitelist <- file.path(getwd(), "213_step1_pcoa_chro_plas.R")
+allowed_cols <- load_allowed_cols_from_reference(config$key, reference_whitelist)
 
-cat(sprintf("Numeric %s columns found (before filtering): %d\n", config$name, length(existing_gene_cols)))
-
-# Apply exclusions
-if (length(config$exclude) > 0) {
-  existing_gene_cols <- existing_gene_cols[!existing_gene_cols %in% config$exclude]
-  if (args$type == "defense") {
-    existing_gene_cols <- existing_gene_cols[!grepl("other", existing_gene_cols, ignore.case = TRUE)]
+if (!is.null(allowed_cols) && length(allowed_cols) > 0) {
+  cat(sprintf("Using whitelist format from: %s\n", reference_whitelist))
+  candidate_cols <- intersect(allowed_cols, all_cols)
+} else {
+  cat("Whitelist not found, falling back to prefix/exclusion filtering.\n")
+  candidate_cols <- all_cols[grepl(config$prefix, all_cols)]
+  if (length(config$exclude) > 0) {
+    candidate_cols <- candidate_cols[!candidate_cols %in% config$exclude]
+    if (args$type == "defense") {
+      candidate_cols <- candidate_cols[!grepl("other", candidate_cols, ignore.case = TRUE)]
+    }
   }
 }
 
-cat(sprintf("Numeric %s columns found (after filtering): %d\n", config$name, length(existing_gene_cols)))
+if (length(candidate_cols) > 0) {
+  numeric_check_n <- min(100, nrow(df))
+  existing_gene_cols <- candidate_cols[sapply(df[1:numeric_check_n, candidate_cols, drop = FALSE], function(x) is.numeric(x))]
+} else {
+  existing_gene_cols <- character(0)
+}
+
+cat(sprintf("Numeric %s columns retained: %d\n", config$name, length(existing_gene_cols)))
 
 # Filter for Plasmid and Chromosome only
 df_filtered <- df %>%
