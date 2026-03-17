@@ -30,7 +30,7 @@ parser$add_argument("-t", "--type", required = TRUE,
                      choices = c("defense", "amr", "antidefense"),
                      help = "Gene type: 'defense', 'amr', or 'antidefense'")
 parser$add_argument("-o", "--output", default = "PCoA_Data", 
-                    help = "Output file prefix (default: PCoA_Data)")
+                    help = "Output directory name and file prefix base (default: PCoA_Data)")
 parser$add_argument("-g", "--group", default = NULL,
                     help = "Optional grouping column name to split analysis (e.g., Host, Genus_CRBC_Updated)")
 parser$add_argument("-c", "--use-counts", action = "store_true",
@@ -73,14 +73,21 @@ if (args$use_counts) {
 cat("\n")
 df <- read.csv(args$input, stringsAsFactors = FALSE, check.names = FALSE)
 
-# Get input file directory for output files
-input_dir <- dirname(normalizePath(args$input, mustWork = TRUE))
+# Resolve output base directory from current working directory
+# -o now controls both directory name and file prefix base
+output_base_dir <- file.path(getwd(), args$output)
+output_prefix_base <- basename(args$output)
 
-# Create output subdirectories directly under input directory
-coord_subdir <- file.path(input_dir, "01_coordinates")
-variance_subdir <- file.path(input_dir, "02_variance")
-matrix_subdir <- file.path(input_dir, "03_matrix")
-permanova_subdir <- file.path(input_dir, "04_permanova")
+if (!dir.exists(output_base_dir)) {
+  dir.create(output_base_dir, recursive = TRUE)
+  cat(sprintf("Created output base directory: %s\n", output_base_dir))
+}
+
+# Create output subdirectories under output base directory
+coord_subdir <- file.path(output_base_dir, "01_coordinates")
+variance_subdir <- file.path(output_base_dir, "02_variance")
+matrix_subdir <- file.path(output_base_dir, "03_matrix")
+permanova_subdir <- file.path(output_base_dir, "04_permanova")
 
 # Create all subdirectories
 dirs_to_create <- list(coord_subdir, variance_subdir, matrix_subdir, permanova_subdir)
@@ -110,7 +117,7 @@ cat(sprintf("Numeric %s columns found (after filtering): %d\n", config$name, len
 
 # Filter for Plasmid and Chromosome only
 df_filtered <- df %>%
-  filter(Contig_Type2 %in% c("Plasmid", "Chromosome"))
+  filter(Contig_Type3 %in% c("Plasmid", "Chromosome"))
 
 cat(sprintf("Total rows after filtering: %d\n\n", nrow(df_filtered)))
 
@@ -131,7 +138,7 @@ if (!is.null(args$group)) {
 
 # Function to create gene matrix aggregated by Sample_ID
 create_gene_matrix_by_sample <- function(data, contig_type, gene_cols) {
-  data_sub <- data %>% filter(Contig_Type2 == contig_type)
+  data_sub <- data %>% filter(Contig_Type3 == contig_type)
   
   if (nrow(data_sub) == 0) return(NULL)
   
@@ -526,16 +533,16 @@ process_group <- function(data_subset, group_name = NULL) {
     cat(sprintf("\n========================================\n"))
     cat(sprintf("Processing group: %s\n", group_name))
     cat("========================================\n\n")
-    output_prefix <- sprintf("%s_%s", args$output, gsub("[^A-Za-z0-9_]", "_", group_name))
+    output_prefix <- sprintf("%s_%s", output_prefix_base, gsub("[^A-Za-z0-9_]", "_", group_name))
   } else {
-    output_prefix <- args$output
+    output_prefix <- output_prefix_base
   }
   
-  # Pass base output directory to function (it will use subdirectories internally)
+  # Pass output base directory to function (it will use subdirectories internally)
   result_chr <- run_pcoa_calculation(data_subset, "Chromosome", output_prefix, 
-                                      existing_gene_cols, config$matrix_suffix, input_dir)
+                                      existing_gene_cols, config$matrix_suffix, output_base_dir)
   result_pla <- run_pcoa_calculation(data_subset, "Plasmid", output_prefix, 
-                                      existing_gene_cols, config$matrix_suffix, input_dir)
+                                      existing_gene_cols, config$matrix_suffix, output_base_dir)
   
   return(list(chr = result_chr, pla = result_pla, prefix = output_prefix))
 }
@@ -587,7 +594,7 @@ for (result_name in names(all_results)) {
   cat("\n")
 }
 
-cat("\nOutput directory: ", input_dir, "\n")
+cat("\nOutput directory: ", output_base_dir, "\n")
 cat("Output files saved to subdirectories:\n")
 cat("  - 01_coordinates/  (coordinate files)\n")
 cat("  - 02_variance/     (variance files)\n")

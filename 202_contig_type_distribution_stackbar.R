@@ -3,7 +3,7 @@
 # =============================================================================
 # Contig Type Distribution Stacked Bar Charts
 # Description: Generate stacked bar charts showing distribution of gene subtypes
-#              (Defense_Subtype, AntiDS_Type, AMR_Type) by Host and Contig_Type
+#              (Defense_Subtype, AntiDS_Type, AMR_Type) by Host and Contig_Type3
 #              Creates both percentage and count visualizations
 # Usage: Rscript 202_contig_type_distribution_stackbar.R -i <input.csv> -o <output_dir> [-n <top_n>]
 #
@@ -75,24 +75,24 @@ length_by_host_type <- data %>%
   ) %>%
   tidyr::pivot_longer(
     cols = starts_with("Total_"),
-    names_to = "Contig_Type",
+    names_to = "Contig_Type3",
     values_to = "Total_Length_kb"
   ) %>%
   mutate(
-    Contig_Type = dplyr::recode(
-      Contig_Type,
+    Contig_Type3 = dplyr::recode(
+      Contig_Type3,
       "Total_Chromosome_kb" = "Chromosome",
       "Total_Plasmid_kb"    = "Plasmid",
       "Total_Virus_kb"      = "Virus"
     )
   )
 
-# 合并Virus和Provirus到Virus，并过滤Host和Contig_Type为空的行
+# 合并Virus和Provirus到Virus，并过滤Host和Contig_Type3为空的行
 data_processed <- data %>%
   mutate(
-    Contig_Type = ifelse(Contig_Type %in% c("Virus", "Provirus"), "Virus", Contig_Type)
+    Contig_Type3 = ifelse(Contig_Type3 %in% c("Virus", "Provirus"), "Virus", Contig_Type3)
   ) %>%
-  filter(Host != "" & Contig_Type != "")
+  filter(Host != "" & Contig_Type3 != "")
 
 # 要处理的三个子类型（反映需求：AntiDS_Subtype部分改为使用AntiDS_Type）
 subtype_list <- list(
@@ -101,7 +101,7 @@ subtype_list <- list(
   AMR_Type = "AMR_Type"
 )
 
-# 定义Contig_Type和Host顺序与配色
+# 定义Contig_Type3和Host顺序与配色
 contig_colors <- c(
   "Chromosome" = "#434d91",
   "Plasmid" = "#75b989",
@@ -124,7 +124,7 @@ for (subtype in names(subtype_list)) {
 
   # 只保留必要的列
   df_sub <- data_processed %>%
-    select(Host, Contig_Type, !!sym(subtype_col))
+    select(Host, Contig_Type3, !!sym(subtype_col))
 
   # 把NA替换为""
   df_sub[[subtype_col]][is.na(df_sub[[subtype_col]])] <- ""
@@ -172,10 +172,10 @@ for (subtype in names(subtype_list)) {
 
   # 统计计数(已经合并Others)
   count_subtype <- df_expanded %>%
-    group_by(Host, Contig_Type, Subtype) %>%
+    group_by(Host, Contig_Type3, Subtype) %>%
   summarise(Count = n(), .groups = 'drop') %>%
-  # 合并每个Host/Contig_Type下的总kb，用于per kb归一化
-  left_join(length_by_host_type, by = c("Host", "Contig_Type")) %>%
+  # 合并每个Host/Contig_Type3下的总kb，用于per kb归一化
+  left_join(length_by_host_type, by = c("Host", "Contig_Type3")) %>%
   mutate(
     Count_per_kb = ifelse(
       !is.na(Total_Length_kb) & Total_Length_kb > 0,
@@ -185,10 +185,10 @@ for (subtype in names(subtype_list)) {
   )
 
   # 计算纯百分比（由count数据直接归一化得到）：
-  # 1) Percentage：基于Count归一化（每个Host/Contig_Type总和为100）
-  # 2) Percentage_perkb：基于Count_per_kb归一化（每个Host/Contig_Type总和为100）
+  # 1) Percentage：基于Count归一化（每个Host/Contig_Type3总和为100）
+  # 2) Percentage_perkb：基于Count_per_kb归一化（每个Host/Contig_Type3总和为100）
   percentage_subtype <- count_subtype %>%
-    group_by(Host, Contig_Type) %>%
+    group_by(Host, Contig_Type3) %>%
     mutate(
       Total = sum(Count),
       Percentage = ifelse(
@@ -205,7 +205,7 @@ for (subtype in names(subtype_list)) {
     ) %>%
     ungroup() %>%
     # Keep pure percentage style while preventing tiny floating-point overflow
-    group_by(Host, Contig_Type) %>%
+    group_by(Host, Contig_Type3) %>%
     mutate(
       Percentage = ifelse(Percentage > 100, 100, Percentage),
       Sum_Pct = sum(Percentage, na.rm = TRUE),
@@ -221,13 +221,13 @@ for (subtype in names(subtype_list)) {
   plot_data_pct <- percentage_subtype %>%
     mutate(
       Host = factor(Host, levels = host_order),
-      Contig_Type = factor(Contig_Type, levels = rev(contig_order)),
+      Contig_Type3 = factor(Contig_Type3, levels = rev(contig_order)),
       Subtype = factor(Subtype, levels = final_subtype_order)
     )
   plot_data_count <- count_subtype %>%
     mutate(
       Host = factor(Host, levels = host_order),
-      Contig_Type = factor(Contig_Type, levels = rev(contig_order)),
+      Contig_Type3 = factor(Contig_Type3, levels = rev(contig_order)),
       Subtype = factor(Subtype, levels = final_subtype_order)
     )
 
@@ -239,7 +239,7 @@ for (subtype in names(subtype_list)) {
 
   for (ct in contig_order) {
     plot_pct <- plot_data_pct %>%
-      filter(Contig_Type == ct)
+      filter(Contig_Type3 == ct)
     if(nrow(plot_pct) > 0) {
       # 图形中堆叠顺序仍然用final_subtype_order（和左图条形堆叠一致，最下颜色是丰度最高）
       # 图例顺序反转：使用 override.aes = list(order = ...) 来手动调整图例顺序
@@ -315,7 +315,7 @@ for (subtype in names(subtype_list)) {
 
   for (ct in contig_order) {
     plot_count <- plot_data_count %>%
-      filter(Contig_Type == ct)
+      filter(Contig_Type3 == ct)
     if(nrow(plot_count) > 0) {
       # 同样调整图例顺序
       plot_count$Subtype_legend <- factor(plot_count$Subtype, levels = rev(final_subtype_order))

@@ -7,7 +7,7 @@
 #   - For each gene type (defense, amr, antidefense) and each host plant
 #     (Alfalfa, Rice, Wheat, Maize), create one PCoA plot.
 #   - In each plot:
-#       * Each point is one Sample_ID × Contig_Type2 (Plasmid / Chromosome).
+#       * Each point is one Sample_ID × Contig_Type3 (Plasmid / Chromosome).
 #       * Color encodes bacterial class (e.g., Class_CRBC).
 #       * Shape encodes contig type (Plasmid vs Chromosome).
 #   - Chromosome and plasmid are always shown in the same panel for each host.
@@ -85,7 +85,7 @@ host_levels_target <- c("Alfalfa", "Rice", "Wheat", "Maize")
 
 contig_shapes <- c(
   "Chromosome" = 16,  # solid circle
-  "Plasmid"    = 17   # solid triangle
+  "Plasmid"    = 2    # hollow triangle
 )
 
 # Color palette for bacterial classes (can be expanded if needed)
@@ -164,7 +164,7 @@ read_one_prefix_data <- function(coord_file, var_file) {
 create_host_plot <- function(type_name, type_label, host_name, data_type, out_file) {
   df <- data_type$coords
 
-  if (!all(c("PCoA1", "PCoA2", "Host", "Contig_Type2") %in% colnames(df))) {
+  if (!all(c("PCoA1", "PCoA2", "Host", "Contig_Type3") %in% colnames(df))) {
     cat(sprintf("  [Warning] Missing required columns for type '%s'. Skipping host '%s'.\n",
                 type_name, host_name))
     return(NULL)
@@ -216,7 +216,7 @@ create_host_plot <- function(type_name, type_label, host_name, data_type, out_fi
       x = "PCoA1",
       y = "PCoA2",
       color = color_var,
-      shape = "Contig_Type2"
+      shape = "Contig_Type3"
     )
   ) +
     geom_point(alpha = 0.7, size = 2.8) +

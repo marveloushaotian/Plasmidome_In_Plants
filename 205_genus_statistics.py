@@ -78,18 +78,18 @@ def determine_contig_type(row):
     Returns:
         String indicating contig type (Chromosome, Plasmid, or Virus)
     """
-    contig_type2 = row['Contig_Type2']
+    contig_type3 = row['Contig_Type3']
     provirus_overlap = row['Provirus_Overlap']
     
     # Default type
-    final_type = contig_type2
+    final_type = contig_type3
     
     # Check for Defense_on_Provirus or AMR_on_Provirus
     if pd.notna(provirus_overlap) and provirus_overlap != '':
         overlap_items = [s.strip() for s in str(provirus_overlap).split(',')]
         
         # If Defense_on_Provirus or AMR_on_Provirus exists and original type is Chromosome
-        if contig_type2 == 'Chromosome':
+        if contig_type3 == 'Chromosome':
             if 'Defense_on_Provirus' in overlap_items or 'AMR_on_Provirus' in overlap_items:
                 final_type = 'Virus'
     
@@ -498,14 +498,14 @@ def count_amr_types(df, genus_list, top_n=12):
     
     # For AMR, we need to recalculate Final_Contig_Type considering only AMR_on_Provirus
     def determine_amr_contig_type(row):
-        contig_type2 = row['Contig_Type2']
+        contig_type3 = row['Contig_Type3']
         provirus_overlap = row['Provirus_Overlap']
         
-        final_type = contig_type2
+        final_type = contig_type3
         
         if pd.notna(provirus_overlap) and provirus_overlap != '':
             overlap_items = [s.strip() for s in str(provirus_overlap).split(',')]
-            if contig_type2 == 'Chromosome' and 'AMR_on_Provirus' in overlap_items:
+            if contig_type3 == 'Chromosome' and 'AMR_on_Provirus' in overlap_items:
                 final_type = 'Virus'
         
         return final_type

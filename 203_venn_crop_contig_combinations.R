@@ -27,7 +27,7 @@ parser <- ArgumentParser(
 parser$add_argument("-i", "--input", required = TRUE, help = "Input CSV file path")
 parser$add_argument("-o", "--output", required = TRUE, help = "Output directory path")
 parser$add_argument("--crop_col", default = "Host", help = "Crop grouping column name")
-parser$add_argument("--contig_col", default = "Contig_Type2", help = "Contig type column name")
+parser$add_argument("--contig_col", default = "Contig_Type3", help = "Contig type column name")
 parser$add_argument(
   "--analysis_type",
   default = "defense",
