@@ -1,139 +1,122 @@
-# Plant Plasmidome Analysis Pipeline
+# Plasmidome In Plants
 
-A comprehensive Nextflow pipeline for the large-scale analysis of plant microbiome and plasmidome data. This workflow automates the process from raw sequencing reads to functional annotation and phylogenetic analysis.
+This repository contains the codebase for our plant plasmidome research project. The project focuses on processing raw sequencing data from plant-associated microbial communities and following the analysis through genome reconstruction, plasmidome-related annotation, defense system characterization, resistance profiling, taxonomy, and downstream statistical analysis and visualization.
 
-## Overview
+In practice, this repository covers two broad stages of the project:
 
-The pipeline is designed to handle both raw sequencing data and pre-assembled/labeled genomes. It integrates multiple state-of-the-art tools to perform:
+- primary processing from raw sequencing reads to annotated genome-level result tables
+- downstream table-based analysis, integration, statistics, visualization, and network analysis
 
-1.  **Assembly & QC**: Spades assembly and quality filtering (Raw mode).
-2.  **Classification**: Plasmid/virus detection using GeNomad.
-3.  **Quality Assessment**: Genome quality check using CheckM.
-4.  **Taxonomy**: Taxonomic classification using GTDB-Tk.
-5.  **Annotation**:
-    *   **Prokka**: General genomic annotation.
-    *   **Prodigal**: Gene prediction.
-    *   **EggNOG**: Functional annotation (optional).
-6.  **Plasmid Analysis**: MOB-suite for plasmid reconstruction and typing.
-7.  **Defense Systems**: Comprehensive detection of defense systems using:
-    *   **PADLOC**
-    *   **DefenseFinder**
-    *   **CCTyper** (CRISPR-Cas)
-    *   **AMRFinder** (Antimicrobial resistance)
-8.  **Phylogeny**: Phylogenetic tree construction using IQ-TREE.
+## Project Scope
 
-## Prerequisites
+The project is designed to study plant-associated bacterial genomes and plasmid-related features from raw paired-end sequencing data. The workflow starts with raw read processing and continues through assembly, contig classification, genome quality control, annotation, plasmid typing, defense system identification, and generation of summary tables for downstream biological interpretation.
 
-*   **Nextflow** (>=23.04.0)
-*   **Conda** or **Mamba** (for environment management)
-*   **Databases**:
-    *   GTDB-Tk database
-    *   EggNOG database (if running EggNOG)
-    *   Genomad database
-    *   CheckM data
+This means the repository is not just a pipeline repository. It is the main code repository for the full project, including both the reproducible workflow layer and the scripts used for follow-up biological analysis.
 
-## Installation
+## Main Workflow
 
-1.  Clone the repository:
-    ```bash
-    git clone https://github.com/yourusername/Plasmidome_In_Plants.git
-    cd Plasmidome_In_Plants
-    ```
+The core end-to-end workflow is implemented in the Nextflow directories. As a representative example, the [`NEXTFLOW`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW) directory shows the canonical structure of the pipeline.
 
-2.  Ensure all necessary Conda environments are created as specified in `nextflow.config`.
+At a high level, the Nextflow workflow does the following:
 
-## Usage
+1. reads paired-end raw FASTQ files
+2. performs assembly and quality filtering
+3. uses GeNomad to label contigs
+4. runs CheckM or CheckM2 for genome quality assessment
+5. extracts high-quality genomes for downstream analysis
+6. performs genome annotation with Prokka and Prodigal
+7. types plasmid-related sequences with MOB-suite
+8. detects defense and resistance features with PADLOC, DefenseFinder, CCTyper, and AMRFinder
+9. optionally performs GTDB-Tk taxonomic classification, phylogenetic analysis, and EggNOG functional annotation
+10. merges defense system results into final summary tables
 
-The pipeline supports two main input modes: **Raw** and **Labeled**.
+So the pipeline covers the project from raw sequencing input all the way to structured annotation outputs and summary tables.
 
-### 1. Raw Mode (Start from FASTQ)
+## Why There Are Multiple Nextflow Directories
 
-Use this mode if you have raw paired-end FASTQ sequencing data.
+This repository contains four related workflow directories:
 
-```bash
-nextflow run main.nf \
-  --input_mode raw \
-  --raw_reads "path/to/Raw_Reads" \
-  --outdir "Results"
-```
+- [`NEXTFLOW`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW)
+- [`NEXTFLOW_PIPELINE`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW_PIPELINE)
+- [`NEXTFLOW_Computerome`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW_Computerome)
+- [`NEXFFLOW_HALF`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXFFLOW_HALF)
 
-### 2. Labeled Mode (Start from FASTA)
+These directories reflect the history of the project as the workflow was migrated and adapted across different compute environments and servers during the course of analysis. They should be understood as environment-specific or stage-specific workflow variants rather than independent scientific projects.
 
-Use this mode if you already have labeled FASTA files (e.g., from a previous run or external source) and a CheckM QA file.
+For explaining the workflow structure, `NEXTFLOW` is the clearest baseline example. In actual use, a different directory may be preferred depending on the target server and environment configuration.
 
-```bash
-nextflow run main.nf \
-  --input_mode labeled \
-  --labeled_fastas "path/to/labeled_fastas" \
-  --existing_qa "path/to/qa.tsv" \
-  --outdir "Results"
-```
+## Downstream Analysis Scripts
 
-For detailed instructions on Labeled Mode, see [LABELED_MODE_USAGE.md](LABELED_MODE_USAGE.md).
+After the Nextflow workflow generates annotation tables and intermediate result files, the numbered Python and R scripts in the repository root are used for downstream analysis.
 
-### 3. Defense Systems Analysis
+These scripts are used for tasks such as:
 
-The pipeline automatically runs PADLOC, DefenseFinder, and CCTyper. To merge these results into a unified report:
+- aggregating and cleaning annotation outputs
+- merging defense, AMR, contig, taxonomy, and sample-level tables
+- calculating diversity, richness, and subtype composition summaries
+- preparing taxonomic summaries and comparative matrices
+- generating PCoA, heatmaps, stacked bar plots, Venn-style comparisons, and other figures
+- preparing iTOL annotations and phylogeny-linked summaries
+- constructing and plotting co-occurrence, isolate, and transfer networks
 
-```bash
-nextflow run main.nf \
-  ... \
-  --run_defense_merger true \
-  --defense_mapping_file "data/Defense_Systems_Name_List.xlsx"
-```
+In other words, the numbered scripts are the project’s analysis layer for turning workflow outputs into biological summaries, comparative analyses, and figures.
 
-For details on the merger module, see [DEFENSE_MERGER_USAGE.md](DEFENSE_MERGER_USAGE.md).
+## Repository Structure
 
-## Configuration
+The repository is organized around the full project workflow rather than a single software package.
 
-Key parameters can be configured in `nextflow.config` or passed via command line:
+### Workflow directories
 
-| Parameter | Default | Description |
-| :--- | :--- | :--- |
-| `--length_threshold` | 1000 | Minimum contig length |
-| `--coverage_threshold` | 20 | Minimum coverage |
-| `--completeness_threshold` | 90.0 | Minimum CheckM completeness |
-| `--contamination_threshold` | 5.0 | Maximum CheckM contamination |
-| `--run_gtdbtk` | false | Enable GTDB-Tk classification |
-| `--run_eggnog` | false | Enable EggNOG annotation |
-| `--run_grouped_trees` | false | Build separate trees for sample groups |
+- [`NEXTFLOW`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW): canonical example of the main pipeline layout
+- [`NEXTFLOW_PIPELINE`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW_PIPELINE): alternate workflow organization used during development
+- [`NEXTFLOW_Computerome`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW_Computerome): Computerome-adapted workflow version
+- [`NEXFFLOW_HALF`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXFFLOW_HALF): partial or intermediate workflow snapshot
 
-## Output Structure
+### Root-level analysis scripts
 
-Results are organized in the output directory (default: `Results/`):
+- `001_*.sh`: data download and raw input preparation
+- `101_*.py` to `107_*.py`: table aggregation, renaming, merging, and annotation cleanup
+- `201_*.R` onward: statistical analysis, comparative summaries, ordination, visualization, and figure generation
+- `217_*.py` onward plus `plot_network_*.R`: graph and network annotation, network construction, and network plotting
 
-```
-Results/
-├── hq_genomes/           # High-quality genome lists and summaries
-├── gtdbtk/               # Taxonomic classification results
-├── mobsuite_recon/       # Plasmid reconstruction results
-├── mobsuite_typer/       # Plasmid typing results
-├── prokka/               # Genome annotations (GFF, FAA, FNA)
-├── prodigal/             # Predicted genes and proteins
-├── padloc/               # Defense system annotations (PADLOC)
-├── defensefinder/        # Defense system annotations (DefenseFinder)
-├── cctyper/              # CRISPR-Cas annotations
-├── amrfinder/            # AMR gene annotations
-├── defense_merger/       # Unified defense system reports
-├── iqtree/               # Phylogenetic trees
-└── pipeline_info/        # Execution reports (timeline, trace, DAG)
-```
+### Project-linked directories
 
-## Project Structure
+- [`Collect`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/Collect): collected inputs and project materials
+- [`Reference`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/Reference): reference files and supporting materials
+- [`Report`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/Report): report outputs
+- [`Result`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/Result): project results and exports
 
-```
-├── Collect/          # Data collection scripts
-├── Reference/        # Reference documentation
-├── Report/           # Analysis reports
-├── Result/           # Processed results
-├── bin/              # Helper scripts
-├── data/             # Data files (e.g., mapping lists)
-├── modules/          # Nextflow DSL2 modules
-├── main.nf           # Main pipeline script
-├── nextflow.config   # Pipeline configuration
-└── README.md         # This file
-```
+Depending on the machine, these may be symlinks to external project storage.
+
+## How To Use The Workflow
+
+For someone new to the project, the recommended way to understand and use the repository is:
+
+1. identify which Nextflow directory matches the target compute environment
+2. inspect `main.nf`, `nextflow.config`, `modules/`, and `bin/` in that workflow directory
+3. prepare raw paired-end reads in the expected naming format
+4. confirm environment paths, databases, and required resource files for the selected workflow directory
+5. run the Nextflow workflow to generate annotation and summary tables
+6. use the numbered Python and R scripts in the repository root for downstream table processing, statistical analysis, and figure generation
+
+For understanding the logic of the pipeline itself, start with:
+
+- [`NEXTFLOW/main.nf`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW/main.nf)
+- [`NEXTFLOW/nextflow.config`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW/nextflow.config)
+- [`NEXTFLOW/modules/`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW/modules)
+
+## Contribution And Project Roles
+
+This project is led by Tao Ke.
+
+The workflow development, adaptation, and downstream analyses in this repository were supported by Haozhe and Pau. We thank all contributors to the project for pipeline development, analysis support, troubleshooting, and scientific discussion.
+
+## Contact
+
+Correspondence:
+
+- [Contact name / email to be added]
 
 ## License
 
-MIT License - see LICENSE file for details.
+MIT License. See [`LICENSE`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/LICENSE).
