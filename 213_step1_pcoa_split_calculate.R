@@ -5,7 +5,7 @@
 # Description: Calculate PCoA coordinates from gene type profiles
 #              Supports: Defense, AMR, AntiDefense
 #              Save coordinates and metadata for later plotting
-# Usage: Rscript 213_step1_pcoa_calculate.R -i <input.csv> -t <type> -o <output_prefix> [-g <group_column>] [-c]
+# Usage: Rscript 213_step1_pcoa_split_calculate.R -i <input.csv> -t <type> -o <output_prefix> [-g <group_column>] [-c]
 #
 # Arguments:
 #   -i: Input CSV file (expanded gene type file)
@@ -14,6 +14,12 @@
 #   -g: Optional grouping column (e.g., Host, Genus_CRBC_Updated) to split analysis by group
 #   -c: Use count numbers instead of binary (present/absent) for PCoA analysis
 # =============================================================================
+
+default_inputs <- list(
+  defense = "Result/NCBI_4395_Batch/06_Cluter/Contig_Sample_Mapping_Expanded_Defense.csv",
+  amr = "Result/NCBI_4395_Batch/06_Cluter/Contig_Sample_Mapping_Expanded_AMR.csv",
+  antidefense = "Result/NCBI_4395_Batch/06_Cluter/Contig_Sample_Mapping_Expanded_AntiDefense.csv"
+)
 
 suppressPackageStartupMessages({
   library(vegan)
@@ -25,18 +31,22 @@ suppressPackageStartupMessages({
 
 # Parse command line arguments
 parser <- ArgumentParser(description = "Calculate PCoA coordinates from gene type profiles")
-parser$add_argument("-i", "--input", required = TRUE, help = "Input CSV file path")
-parser$add_argument("-t", "--type", required = TRUE, 
+parser$add_argument("-i", "--input", default = NULL, help = "Input CSV file path")
+parser$add_argument("-t", "--type", default = "defense",
                      choices = c("defense", "amr", "antidefense"),
-                     help = "Gene type: 'defense', 'amr', or 'antidefense'")
-parser$add_argument("-o", "--output", default = "PCoA_Data", 
-                    help = "Output directory name and file prefix base (default: PCoA_Data)")
+                     help = "Gene type: 'defense', 'amr', or 'antidefense' (default: defense)")
+parser$add_argument("-o", "--output", default = "Result/NCBI_4395_Batch/06_Cluter/PCoA_Data",
+                    help = "Output directory name and file prefix base")
 parser$add_argument("-g", "--group", default = NULL,
                     help = "Optional grouping column name to split analysis (e.g., Host, Genus_CRBC_Updated)")
 parser$add_argument("-c", "--use-counts", action = "store_true",
                     help = "Use count numbers instead of binary (present/absent) for PCoA analysis")
 
 args <- parser$parse_args()
+
+if (is.null(args$input)) {
+  args$input <- default_inputs[[args$type]]
+}
 
 # Configuration based on type
 type_config <- list(
@@ -648,5 +658,4 @@ cat("  - 01_coordinates/  (coordinate files)\n")
 cat("  - 02_variance/     (variance files)\n")
 cat("  - 03_matrix/       (matrix files)\n")
 cat("  - 04_permanova/    (PERMANOVA test results)\n")
-cat(sprintf("\nRun 214_step2_pcoa_plot_split.R to create customized plots.\n"))
-
+cat(sprintf("\nRun 214_step2_pcoa_split_plot.R to create customized plots.\n"))

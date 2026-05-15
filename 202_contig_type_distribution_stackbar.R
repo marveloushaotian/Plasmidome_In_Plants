@@ -5,11 +5,11 @@
 # Description: Generate stacked bar charts showing distribution of gene subtypes
 #              (Defense_Subtype, AntiDS_Type, AMR_Type) by Host and Contig_Type3
 #              Creates both percentage and count visualizations
-# Usage: Rscript 202_contig_type_distribution_stackbar.R -i <input.csv> -o <output_dir> [-n <top_n>]
+# Usage: Rscript 202_contig_type_distribution_stackbar.R [-i <input.csv>] [-o <output_dir>] [-n <top_n>]
 #
 # Arguments:
-#   -i: Input CSV file path (required)
-#   -o: Output base directory for results (required)
+#   -i: Input CSV file path
+#   -o: Output base directory for results
 #   -n: Number of top subtypes to show (others merged into "Others") (default: 20)
 # =============================================================================
 
@@ -23,9 +23,11 @@ suppressPackageStartupMessages({
 
 # Parse command line arguments
 parser <- ArgumentParser(description = "Generate stacked bar charts for gene subtype distribution")
-parser$add_argument("-i", "--input", required = TRUE,
-                    help = "Input CSV file path (e.g., Contig_Sample_Mapping_Final.csv)")
-parser$add_argument("-o", "--output", required = TRUE,
+parser$add_argument("-i", "--input",
+                    default = "Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv",
+                    help = "Input CSV file path")
+parser$add_argument("-o", "--output",
+                    default = "Result/NCBI_4395_Batch/02_Gene_Distribution_Stackbar",
                     help = "Output base directory for results")
 parser$add_argument("-n", "--top-n", type = "integer", default = 20,
                     help = "Number of top subtypes to show, others merged to 'Others' (default: 20)")
@@ -413,4 +415,3 @@ for (subtype in names(subtype_list)) {
   cat(sprintf("    - percentage/%s_distribution_percentage.csv\n", tolower(subtype)))
 }
 cat("\n")
-

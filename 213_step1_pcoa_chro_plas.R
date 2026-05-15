@@ -30,6 +30,12 @@
 #       plas_chro_coordinates and plas_chro_variance
 # =============================================================================
 
+default_inputs <- list(
+  defense = "Result/NCBI_4395_Batch/06_Cluter/Contig_Sample_Mapping_Expanded_Defense.csv",
+  amr = "Result/NCBI_4395_Batch/06_Cluter/Contig_Sample_Mapping_Expanded_AMR.csv",
+  antidefense = "Result/NCBI_4395_Batch/06_Cluter/Contig_Sample_Mapping_Expanded_AntiDefense.csv"
+)
+
 suppressPackageStartupMessages({
   library(vegan)
   library(dplyr)
@@ -44,14 +50,14 @@ parser <- ArgumentParser(
 )
 parser$add_argument(
   "-i", "--input",
-  required = TRUE,
+  default = NULL,
   help = "Input CSV file path (expanded gene type table) for one gene type."
 )
 parser$add_argument(
   "-t", "--type",
-  required = TRUE,
+  default = "defense",
   choices = c("defense", "amr", "antidefense"),
-  help = "Gene type: 'defense', 'amr', or 'antidefense'."
+  help = "Gene type: 'defense', 'amr', or 'antidefense' (default: defense)."
 )
 parser$add_argument(
   "-o", "--output",
@@ -65,6 +71,10 @@ parser$add_argument(
 )
 
 args <- parser$parse_args()
+
+if (is.null(args$input)) {
+  args$input <- default_inputs[[args$type]]
+}
 
 # ------------------------- 2. Configuration -------------------------------- #
 

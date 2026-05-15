@@ -24,8 +24,12 @@ suppressPackageStartupMessages({
 parser <- ArgumentParser(
   description = "Create Venn diagrams and combination statistics for Chromosome/Plasmid/Virus by crop group."
 )
-parser$add_argument("-i", "--input", required = TRUE, help = "Input CSV file path")
-parser$add_argument("-o", "--output", required = TRUE, help = "Output directory path")
+parser$add_argument("-i", "--input",
+                    default = "Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv",
+                    help = "Input CSV file path")
+parser$add_argument("-o", "--output",
+                    default = "Result/NCBI_4395_Batch/03_Gene_Diversity",
+                    help = "Output directory path")
 parser$add_argument("--crop_col", default = "Host", help = "Crop grouping column name")
 parser$add_argument("--contig_col", default = "Contig_Type3", help = "Contig type column name")
 parser$add_argument(

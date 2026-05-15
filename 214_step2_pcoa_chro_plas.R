@@ -47,6 +47,11 @@ parser <- ArgumentParser(
   description = "Create host-level PCoA plots with chromosome+plasmid overlay from all coordinates files."
 )
 parser$add_argument(
+  "-r", "--root-dir",
+  default = "Result/NCBI_4395_Batch/06_Cluter",
+  help = "Root directory to scan for plas_chro_coordinates (default: Result/NCBI_4395_Batch/06_Cluter)."
+)
+parser$add_argument(
   "-c", "--color-by",
   default = "Class_CRBC",
   help = "Column name used for point color (default: Class_CRBC)."
@@ -62,14 +67,14 @@ find_coord_dirs <- function(root_dir = ".") {
   unique(coord_dirs)
 }
 
-coord_dirs <- find_coord_dirs(".")
+coord_dirs <- find_coord_dirs(args$root_dir)
 
 if (length(coord_dirs) == 0) {
   stop("No 'plas_chro_coordinates' directory was found under current working directory.")
 }
 
 cat("=== Step 2 (Chromosome+Plasmid overlay): Batch PCoA Plotting ===\n\n")
-cat(sprintf("Working directory: %s\n", normalizePath(".", mustWork = TRUE)))
+cat(sprintf("Scan root: %s\n", normalizePath(args$root_dir, mustWork = TRUE)))
 cat(sprintf("Found coordinate directories: %d\n", length(coord_dirs)))
 cat(sprintf("Color by: %s\n\n", args$color_by))
 
@@ -317,4 +322,3 @@ cat("\n=================================================================\n")
 cat("PCoA plotting for chromosome+plasmid overlay design complete.\n")
 cat("=================================================================\n")
 cat(sprintf("\nAll plots were written to: %s\n", plots_dir))
-

@@ -10,6 +10,10 @@ import os
 from pathlib import Path
 from tqdm import tqdm
 
+DEFAULT_MERGED = "Result/NCBI_4395_Batch/07_Network/coocc_network/mmseq_overall_contigs_cluster.rename_map.merged.tsv"
+DEFAULT_DIRECTORY = "Result/NCBI_4395_Batch/07_Network/coocc_network"
+DEFAULT_OUTPUT_DIR = "Result/NCBI_4395_Batch/07_Network/coocc_network/Annotation"
+
 
 # Color mapping based on Class_CRBC
 CLASS_COLOR_MAP = {
@@ -41,11 +45,11 @@ Examples:
   python 217_annotate_nodes.py -m Result/NCBI_4395_Batch/07_Network/isolate_network/mmseq_overall_contigs_cluster.rename_map.merged.tsv -d Result/NCBI_4395_Batch/07_Network/isolate_network -o Result/NCBI_4395_Batch/07_Network/isolate_network/Annotation -k GenomeID_standard --extract-genome-id
         """
     )
-    parser.add_argument('-m', '--merged', required=True,
+    parser.add_argument('-m', '--merged', default=DEFAULT_MERGED,
                         help='Merged cluster rename map TSV file')
-    parser.add_argument('-d', '--directory', required=True,
+    parser.add_argument('-d', '--directory', default=DEFAULT_DIRECTORY,
                         help='Directory containing nodes TSV files')
-    parser.add_argument('-o', '--output-dir', required=True,
+    parser.add_argument('-o', '--output-dir', default=DEFAULT_OUTPUT_DIR,
                         help='Output directory (Annotation folder)')
     parser.add_argument('-k', '--key-column', default='auto',
                         choices=['auto', 'cluster', 'contig', 'GenomeID_standard'],
@@ -171,4 +175,3 @@ Examples:
 
 if __name__ == '__main__':
     main()
-

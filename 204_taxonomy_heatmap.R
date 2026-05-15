@@ -8,8 +8,8 @@
 # Usage:
 #   Rscript 204_taxonomy_heatmap.R -i <input.csv> -o <output_dir> [-g <top_genes>] [--taxonomy-levels <levels>] [--top-kingdom <n>] [--top-phylum <n>] [--top-class <n>] [--top-order <n>] [--top-family <n>] [--top-genus-updated <n>] [--top-species <n>] [-w <width>] [-e <height>]
 # Example:
-#   Rscript 204_taxonomy_heatmap.R -i Result/NCBI_4395_Batch/Contig_Sample_Mapping_Final_with_Provirus_Overlap_GTDB_corrected.csv -o Result/NCBI_4395_Batch/04_Gene_Taxonomy -g 50 --taxonomy-levels Kingdom_CRBC,Phylum_CRBC,Genus_CRBC_Updated --top-kingdom 20 --top-phylum 50 -w 15 -e 30
-#   Rscript 204_taxonomy_heatmap.R -i Result/NCBI_4395_Batch/Contig_Sample_Mapping_Final_with_Provirus_Overlap_GTDB_corrected.csv -o Result/NCBI_4395_Batch/04_Gene_Taxonomy/ -g 20 --taxonomy-levels Class_CRBC -w 12 -e 8
+#   Rscript 204_taxonomy_heatmap.R -i Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv -o Result/NCBI_4395_Batch/04_Gene_Taxonomy -g 50 --taxonomy-levels Kingdom_CRBC,Phylum_CRBC,Genus_CRBC_Updated --top-kingdom 20 --top-phylum 50 -w 15 -e 30
+#   Rscript 204_taxonomy_heatmap.R -i Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv -o Result/NCBI_4395_Batch/04_Gene_Taxonomy/ -g 20 --taxonomy-levels Class_CRBC -w 12 -e 8
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -69,8 +69,8 @@ normalize_top_n <- function(value, arg_name) {
 # Step 1: Parse command line arguments
 parser <- ArgumentParser(description = "Generate taxonomy heatmaps by Contig_Type3 and Host")
 parser$add_argument(
-  "-i", "--input", default = "Result/NCBI_4395_Batch/Contig_Sample_Mapping_Final_with_Provirus_Overlap_GTDB_corrected.csv",
-  help = "Input CSV file path (default: Result/NCBI_4395_Batch/Contig_Sample_Mapping_Final_with_Provirus_Overlap_GTDB_corrected.csv)"
+  "-i", "--input", default = "Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv",
+  help = "Input CSV file path"
 )
 parser$add_argument(
   "-o", "--output", default = "Result/NCBI_4395_Batch/04_Gene_Taxonomy",

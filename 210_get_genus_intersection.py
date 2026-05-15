@@ -15,6 +15,10 @@ import argparse
 import pandas as pd
 from tqdm import tqdm
 
+DEFAULT_INPUT = "Result/NCBI_4395_Batch/05_Tree/Genus_Level_Intersection/Sample_Genus_map.csv"
+DEFAULT_OUTPUT = "Result/NCBI_4395_Batch/05_Tree/Genus_Level_Intersection/Genus_CRBC_Updated_Intersection.csv"
+
+
 def get_genus_intersection(input_file, output_file):
     """
     Get intersection of Genus_CRBC_Updated values across all Host groups.
@@ -104,10 +108,10 @@ Examples:
         """
     )
     parser.add_argument('-i', '--input', 
-                        required=True,
+                        default=DEFAULT_INPUT,
                         help='Input CSV file path')
     parser.add_argument('-o', '--output',
-                        required=True,
+                        default=DEFAULT_OUTPUT,
                         help='Output CSV file path')
     
     args = parser.parse_args()
@@ -115,4 +119,3 @@ Examples:
 
 if __name__ == '__main__':
     main()
-

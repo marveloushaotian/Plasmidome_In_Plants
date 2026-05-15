@@ -5,11 +5,11 @@
 # Description: Calculate and visualize richness (number of unique types) for
 #              Defense_Type, AntiDS_Type, and AMR_Type per sample
 #              Generates boxplots and summary statistics
-# Usage: Rscript 203_calculate_defense_richness.R -i <input.csv> -o <output_dir>
+# Usage: Rscript 203_calculate_defense_richness.R [-i <input.csv>] [-o <output_dir>]
 #
 # Arguments:
-#   -i: Input CSV file path (required)
-#   -o: Output directory for results (required)
+#   -i: Input CSV file path
+#   -o: Output directory for results
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -22,9 +22,11 @@ suppressPackageStartupMessages({
 
 # Parse command line arguments
 parser <- ArgumentParser(description = "Calculate defense system richness (alpha diversity)")
-parser$add_argument("-i", "--input", required = TRUE,
-                    help = "Input CSV file path (e.g., Contig_Sample_Mapping_Final.csv)")
-parser$add_argument("-o", "--output", required = TRUE,
+parser$add_argument("-i", "--input",
+                    default = "Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv",
+                    help = "Input CSV file path")
+parser$add_argument("-o", "--output",
+                    default = "Result/NCBI_4395_Batch/03_Gene_Diversity/Alpha_Diversity",
                     help = "Output directory for results")
 
 args <- parser$parse_args()
@@ -247,4 +249,3 @@ cat(sprintf("  - AMR_Richness_by_Host_ContigType3.pdf\n"))
 cat(sprintf("  - Combined_Richness_by_Host_ContigType3.pdf\n"))
 cat(sprintf("  - richness_summary_statistics.csv\n"))
 cat("\n")
-

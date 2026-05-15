@@ -7,6 +7,10 @@
 # Usage: Rscript 216_analyze_pcoa_clusters.R -c <coords.csv> -m <matrix.csv> -d <workdir> -k <k_value> -o <output_prefix>
 # =============================================================================
 
+DEFAULT_COORDS <- "Result/NCBI_4395_Batch/06_Cluter/amr_merge/01_coordinates/PCoA_AMR_Chromosome_coordinates.csv"
+DEFAULT_MATRIX <- "Result/NCBI_4395_Batch/06_Cluter/amr_merge/03_matrix/PCoA_AMR_Chromosome_amr_matrix.csv"
+DEFAULT_WORKDIR <- "Result/NCBI_4395_Batch/06_Cluter/amr_merge"
+
 suppressPackageStartupMessages({
   library(dplyr)
   library(cluster)
@@ -16,12 +20,12 @@ suppressPackageStartupMessages({
 
 # Parse command line arguments
 parser <- ArgumentParser(description = "Analyze PCoA Cluster Formation")
-parser$add_argument("-c", "--coords", required = TRUE,
+parser$add_argument("-c", "--coords", default = DEFAULT_COORDS,
                     help = "PCoA coordinates CSV file")
-parser$add_argument("-m", "--matrix", required = TRUE,
+parser$add_argument("-m", "--matrix", default = DEFAULT_MATRIX,
                     help = "Gene matrix CSV file")
-parser$add_argument("-d", "--workdir", default = ".",
-                    help = "Working directory (default: current directory)")
+parser$add_argument("-d", "--workdir", default = DEFAULT_WORKDIR,
+                    help = "Working directory")
 parser$add_argument("-k", "--k-value", type = "integer", default = 4,
                     help = "Number of clusters for k-means (default: 4)")
 parser$add_argument("-o", "--output-prefix", default = "PCoA_AMR_Chromosome",
@@ -29,6 +33,8 @@ parser$add_argument("-o", "--output-prefix", default = "PCoA_AMR_Chromosome",
 
 args <- parser$parse_args()
 
+args$coords <- normalizePath(args$coords, mustWork = TRUE)
+args$matrix <- normalizePath(args$matrix, mustWork = TRUE)
 setwd(args$workdir)
 
 cat("=== Analyzing PCoA Cluster Formation ===\n\n")
@@ -210,4 +216,3 @@ coords_matched %>%
   select(Sample_ID, PCoA1, PCoA2, Cluster, Host, Class_CRBC, Order_CRBC, Gene_Signature) %>%
   write.csv(output_file, row.names = FALSE)
 cat(sprintf("\nCluster assignments saved to: %s\n", output_file))
-

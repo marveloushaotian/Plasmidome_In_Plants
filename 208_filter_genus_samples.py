@@ -9,12 +9,16 @@ Usage:
     python 208_filter_genus_samples.py -i INPUT -g GENUS -o OUTPUT
 
 Example:
-    python 208_filter_genus_samples.py -i Result/NCBI_4395_Batch/Contig_Sample_Mapping_Final_with_Provirus_Overlap_GTDB_corrected.csv -g Result/NCBI_4395_Batch/05_Tree/Genus_Level/Genus_Name.csv -o Result/NCBI_4395_Batch/05_Tree/Genus_Level/Filtered_Sample_Genus.csv
+    python 208_filter_genus_samples.py
 """
 
 import pandas as pd
 import argparse
 from tqdm import tqdm
+
+DEFAULT_MASTER_TABLE = "Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv"
+DEFAULT_GENUS_FILE = "Result/NCBI_4395_Batch/05_Tree/Genus_Level/Genus_Name.csv"
+DEFAULT_OUTPUT_FILE = "Result/NCBI_4395_Batch/05_Tree/Genus_Level/Filtered_Sample_Genus.csv"
 
 def main():
     # Step 1: Parse arguments
@@ -23,17 +27,17 @@ def main():
     )
     parser.add_argument(
         '-i', '--input',
-        required=True,
+        default=DEFAULT_MASTER_TABLE,
         help='Input CSV file with contig sample mapping'
     )
     parser.add_argument(
         '-g', '--genus',
-        required=True,
+        default=DEFAULT_GENUS_FILE,
         help='Input CSV file with genus names'
     )
     parser.add_argument(
         '-o', '--output',
-        required=True,
+        default=DEFAULT_OUTPUT_FILE,
         help='Output CSV file'
     )
     
@@ -72,4 +76,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

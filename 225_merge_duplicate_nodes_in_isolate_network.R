@@ -5,11 +5,13 @@
 
 args <- commandArgs(trailingOnly = TRUE)
 
-if (length(args) < 1) {
-  stop("Usage: Rscript merge_duplicate_nodes_in_isolate_network.R input.tsv [output.tsv]")
-}
+DEFAULT_INPUT <- "Result/NCBI_4395_Batch/07_Network/isolate_network/Plasmid_annotation_explore/All_genome_sharing_nodes_dup.tsv"
 
-input_file <- args[1]
+if (length(args) < 1) {
+  input_file <- DEFAULT_INPUT
+} else {
+  input_file <- args[1]
+}
 if (length(args) >= 2) {
   output_file <- args[2]
 } else {

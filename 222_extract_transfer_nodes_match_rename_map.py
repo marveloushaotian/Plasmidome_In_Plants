@@ -12,7 +12,7 @@ Workflow:
 6) Save the final unique extracted list.
 
 Usage example:
-  python 224_extract_transfer_nodes_match_rename_map.py \
+  python 222_extract_transfer_nodes_match_rename_map.py \
     -e Result/NCBI_4395_Batch/07_Network/transfer_network/Medicago_linkage_contig_edges.tsv \
        Result/NCBI_4395_Batch/07_Network/transfer_network/Oryza_linkage_contig_edges.tsv \
        Result/NCBI_4395_Batch/07_Network/transfer_network/Triticum_linkage_contig_edges.tsv \
@@ -28,6 +28,15 @@ from typing import Iterable, List, Optional
 import pandas as pd
 from tqdm import tqdm
 
+DEFAULT_EDGES = [
+    "Result/NCBI_4395_Batch/07_Network/transfer_network/Medicago_linkage_contig_edges.tsv",
+    "Result/NCBI_4395_Batch/07_Network/transfer_network/Oryza_linkage_contig_edges.tsv",
+    "Result/NCBI_4395_Batch/07_Network/transfer_network/Triticum_linkage_contig_edges.tsv",
+    "Result/NCBI_4395_Batch/07_Network/transfer_network/Zea_linkage_contig_edges.tsv",
+]
+DEFAULT_RENAME_MAP = "Result/NCBI_4395_Batch/07_Network/transfer_network/mmseq_overall_contigs_cluster.rename_map.tsv"
+DEFAULT_OUTPUT_DIR = "Result/NCBI_4395_Batch/07_Network/transfer_network"
+
 
 def parse_args() -> argparse.Namespace:
     """Step 1. Parse command-line arguments."""
@@ -42,19 +51,19 @@ def parse_args() -> argparse.Namespace:
         "-e",
         "--edges",
         nargs="+",
-        required=True,
+        default=DEFAULT_EDGES,
         help="Input edge TSV files (must contain 'source' and 'target').",
     )
     parser.add_argument(
         "-r",
         "--rename-map",
-        required=True,
+        default=DEFAULT_RENAME_MAP,
         help="Rename-map TSV file (must contain 'original' and 'new').",
     )
     parser.add_argument(
         "-o",
         "--output-dir",
-        required=True,
+        default=DEFAULT_OUTPUT_DIR,
         help="Output directory path.",
     )
     parser.add_argument(

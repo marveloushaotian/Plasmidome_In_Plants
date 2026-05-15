@@ -8,6 +8,10 @@ import argparse
 import pandas as pd
 from tqdm import tqdm
 
+DEFAULT_RENAME_MAP = "Result/NCBI_4395_Batch/07_Network/coocc_network/mmseq_overall_contigs_cluster.rename_map.tsv"
+DEFAULT_MASTER_TABLE = "Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv"
+DEFAULT_OUTPUT = "Result/NCBI_4395_Batch/07_Network/coocc_network/mmseq_overall_contigs_cluster.rename_map.merged.tsv"
+
 
 def count_values(value):
     """Count number of values separated by commas. Empty value counts as 0."""
@@ -22,14 +26,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python 219_merge_cluster_with_mapping.py -i Result/NCBI_4395_Batch/07_Network/coocc_network/mmseq_overall_contigs_cluster.rename_map.tsv -m Result/NCBI_4395_Batch/07_Network/Contig_Sample_Mapping_Final_with_Provirus_Overlap_GTDB_corrected.csv -o Result/NCBI_4395_Batch/07_Network/coocc_network/mmseq_overall_contigs_cluster.rename_map.merged.tsv
+  python 219_merge_cluster_with_mapping.py
         """
     )
-    parser.add_argument('-i', '--input', required=True,
+    parser.add_argument('-i', '--input', default=DEFAULT_RENAME_MAP,
                         help='Input TSV file (mmseq_overall_contigs_cluster.rename_map.tsv)')
-    parser.add_argument('-m', '--mapping', required=True,
-                        help='Mapping CSV file (Contig_Sample_Mapping_Final_with_Provirus_Overlap_GTDB_corrected.csv)')
-    parser.add_argument('-o', '--output', required=True,
+    parser.add_argument('-m', '--mapping', default=DEFAULT_MASTER_TABLE,
+                        help='Mapping CSV file')
+    parser.add_argument('-o', '--output', default=DEFAULT_OUTPUT,
                         help='Output TSV file')
     
     args = parser.parse_args()
@@ -88,4 +92,3 @@ Examples:
 
 if __name__ == '__main__':
     main()
-

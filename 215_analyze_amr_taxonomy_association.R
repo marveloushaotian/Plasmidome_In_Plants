@@ -7,6 +7,10 @@
 # Usage: Rscript 215_analyze_amr_taxonomy_association.R -c <coords.csv> -m <matrix.csv> -d <workdir> -o <output_prefix>
 # =============================================================================
 
+DEFAULT_COORDS <- "Result/NCBI_4395_Batch/06_Cluter/amr_merge/01_coordinates/PCoA_AMR_Chromosome_coordinates.csv"
+DEFAULT_MATRIX <- "Result/NCBI_4395_Batch/06_Cluter/amr_merge/03_matrix/PCoA_AMR_Chromosome_amr_matrix.csv"
+DEFAULT_WORKDIR <- "Result/NCBI_4395_Batch/06_Cluter/amr_merge"
+
 suppressPackageStartupMessages({
   library(dplyr)
   library(tidyr)
@@ -18,17 +22,19 @@ suppressPackageStartupMessages({
 
 # Parse command line arguments
 parser <- ArgumentParser(description = "Analyze AMR-Taxonomy Association")
-parser$add_argument("-c", "--coords", required = TRUE, 
+parser$add_argument("-c", "--coords", default = DEFAULT_COORDS,
                     help = "PCoA coordinates CSV file")
-parser$add_argument("-m", "--matrix", required = TRUE,
+parser$add_argument("-m", "--matrix", default = DEFAULT_MATRIX,
                     help = "AMR matrix CSV file")
-parser$add_argument("-d", "--workdir", default = ".",
-                    help = "Working directory (default: current directory)")
+parser$add_argument("-d", "--workdir", default = DEFAULT_WORKDIR,
+                    help = "Working directory")
 parser$add_argument("-o", "--output-prefix", default = "AMR",
                     help = "Output file prefix (default: AMR)")
 
 args <- parser$parse_args()
 
+args$coords <- normalizePath(args$coords, mustWork = TRUE)
+args$matrix <- normalizePath(args$matrix, mustWork = TRUE)
 setwd(args$workdir)
 
 cat("=== AMR-Taxonomy Association Analysis ===\n\n")
@@ -322,4 +328,3 @@ cat(sprintf("1. %s_Class_Association_ChiSquare.csv - Class-level association tes
 cat(sprintf("2. %s_Class_Prevalence_Heatmap.pdf - AMR prevalence heatmap\n", args$output_prefix))
 cat(sprintf("3. %s_Class_Enrichment_Bubble.pdf - Enrichment bubble plot\n", args$output_prefix))
 cat(sprintf("4. %s_Order_Association.csv - Order-level association test\n", args$output_prefix))
-

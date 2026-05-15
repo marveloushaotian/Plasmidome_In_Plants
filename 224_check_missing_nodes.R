@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
-edges <- read.delim("Result/NCBI_4395_Batch/07_Network/isolate_network/Annotation/All_genome_sharing_edges.tsv", sep="\t", stringsAsFactors=FALSE)
-nodes <- read.delim("Result/NCBI_4395_Batch/07_Network/isolate_network/Annotation/All_genome_sharing_nodes.tsv", sep="\t", stringsAsFactors=FALSE)
+edges <- read.delim("Result/NCBI_4395_Batch/07_Network/isolate_network/Plasmid_annotation_explore/All_genome_sharing_edges.tsv", sep="\t", stringsAsFactors=FALSE)
+nodes <- read.delim("Result/NCBI_4395_Batch/07_Network/isolate_network/Plasmid_annotation_explore/All_genome_sharing_nodes.tsv", sep="\t", stringsAsFactors=FALSE)
 
 edge_nodes <- unique(c(edges$g1, edges$g2))
 node_ids <- unique(nodes$id)

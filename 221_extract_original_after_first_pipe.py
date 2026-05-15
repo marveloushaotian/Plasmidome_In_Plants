@@ -8,7 +8,7 @@ the extracted strings while preserving first appearance order, and writes
 them to a new TSV file.
 
 Usage example:
-  python 222_extract_original_after_first_pipe.py \
+  python 221_extract_original_after_first_pipe.py \
     -i Result/NCBI_4395_Batch/07_Network/transfer_network/mmseq_overall_contigs_cluster.rename_map.tsv \
     -o Result/NCBI_4395_Batch/07_Network/transfer_network/mmseq_overall_contigs_cluster.original_after_first_pipe.unique.tsv
 """
@@ -19,6 +19,9 @@ from pathlib import Path
 from typing import Optional
 
 from tqdm import tqdm
+
+DEFAULT_INPUT = "Result/NCBI_4395_Batch/07_Network/transfer_network/mmseq_overall_contigs_cluster.rename_map.tsv"
+DEFAULT_OUTPUT = "Result/NCBI_4395_Batch/07_Network/transfer_network/mmseq_overall_contigs_cluster.original_after_first_pipe.unique.tsv"
 
 
 def extract_after_first_pipe(text: str) -> Optional[str]:
@@ -41,15 +44,15 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawTextHelpFormatter,
         epilog=(
             "Example:\n"
-            "  python 222_extract_original_after_first_pipe.py \\\n"
+            "  python 221_extract_original_after_first_pipe.py \\\n"
             "    -i Result/NCBI_4395_Batch/07_Network/transfer_network/"
             "mmseq_overall_contigs_cluster.rename_map.tsv \\\n"
             "    -o Result/NCBI_4395_Batch/07_Network/transfer_network/"
             "mmseq_overall_contigs_cluster.original_after_first_pipe.unique.tsv"
         ),
     )
-    parser.add_argument("-i", "--input", required=True, help="Input TSV file path.")
-    parser.add_argument("-o", "--output", required=True, help="Output TSV file path.")
+    parser.add_argument("-i", "--input", default=DEFAULT_INPUT, help="Input TSV file path.")
+    parser.add_argument("-o", "--output", default=DEFAULT_OUTPUT, help="Output TSV file path.")
     parser.add_argument(
         "-c",
         "--column",

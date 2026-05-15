@@ -157,9 +157,11 @@ def write_graphml(nodes_df, edges_df, out_graphml, node_cols):
 
 def main():
     ap = argparse.ArgumentParser(description="Build contig-level plasmid linkage network from MMseqs cluster mapping.")
-    ap.add_argument("--cluster-map", required=True,
+    ap.add_argument("--cluster-map",
+                    default="Result/NCBI_4395_Batch/07_Network/transfer_network/mmseq_overall_contigs_cluster.rename_map.tsv",
                     help="*_cluster_output_cluster.renamed.tsv (2 cols: cluster_rep, member_contig).")
-    ap.add_argument("--meta", required=True,
+    ap.add_argument("--meta",
+                    default="Collect/NCBI_4395_Batch/meta_statistics.txt",
                     help="meta_statistics.txt (GenomeID_standard + taxonomy columns).")
     ap.add_argument("--tax-cols", default="Kingdom,Phylum,Class,Order,Family,Genus",
                     help="Comma-separated taxonomy columns to attach to nodes.")
@@ -169,7 +171,8 @@ def main():
                     help="Ignore clusters with < this many members.")
     ap.add_argument("--max-cluster-size", type=int, default=0,
                     help="If >0, ignore clusters with > this many members (safety for clique).")
-    ap.add_argument("--out-prefix", required=True,
+    ap.add_argument("--out-prefix",
+                    default="Result/NCBI_4395_Batch/07_Network/transfer_network/linkage_contig_network",
                     help="Output prefix (folder + basename).")
     ap.add_argument("--graphml", action="store_true",
                     help="Also write GraphML (requires networkx).")
@@ -213,4 +216,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

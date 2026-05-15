@@ -9,6 +9,9 @@ import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
 
+DEFAULT_DIRECTORY = "Result/NCBI_4395_Batch/07_Network/coocc_network/Annotation"
+DEFAULT_OUTPUT_DIR = "Result/NCBI_4395_Batch/07_Network/coocc_network/isolated_nodes"
+
 
 def find_isolated_nodes(nodes_file, edges_file, node_id_col=None, output_file=None):
     """
@@ -86,12 +89,12 @@ Examples:
   python 218_find_isolated_nodes.py -d Result/NCBI_4395_Batch/07_Network/isolate_network -n GenomeID_standard -o Result/NCBI_4395_Batch/07_Network/isolate_network/isolated_nodes
         """
     )
-    parser.add_argument('-d', '--directory', required=True,
+    parser.add_argument('-d', '--directory', default=DEFAULT_DIRECTORY,
                         help='Directory containing nodes and edges TSV files')
     parser.add_argument('-n', '--node-id-col', default=None,
                         help='Column name for node ID in nodes files (auto-detect if not specified: id, cluster, contig, node, GenomeID_standard)')
-    parser.add_argument('-o', '--output-dir', default='isolated_nodes',
-                        help='Output directory for isolated nodes files (default: isolated_nodes)')
+    parser.add_argument('-o', '--output-dir', default=DEFAULT_OUTPUT_DIR,
+                        help='Output directory for isolated nodes files')
     
     args = parser.parse_args()
     
@@ -176,4 +179,3 @@ Examples:
 
 if __name__ == '__main__':
     main()
-

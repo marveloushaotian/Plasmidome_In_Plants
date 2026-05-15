@@ -1,8 +1,11 @@
 #!/usr/bin/env Rscript
-# 1) Plot transfer network with FR layout
-# 2) Styles: compact_disk and scattered
-# 3) Optional: center connected nodes when isolated nodes are included
-# 4) Optional: resolve node overlaps after layout
+# 1) Plot co-occurrence network with FR layout
+# 2) Keep original input schema: edges need source/target, nodes need id
+# 3) Provide two styles: compact_disk and scattered
+# 4) Optional: center connected nodes when isolated nodes included
+# 5) Optional: resolve node overlaps after layout
+# 6) Node size: fixed / degree / strength
+# 7) Color: origin_class / community
 
 suppressPackageStartupMessages({
   library(igraph)
@@ -13,16 +16,12 @@ suppressPackageStartupMessages({
 
 args <- commandArgs(trailingOnly = TRUE)
 
-if (length(args) < 3) {
-  stop("Usage: Rscript plot_network_transfer_igraph.R -e edges.tsv -n nodes.tsv -o output.png [options]")
-}
-
 # -----------------------------
 # Defaults
 # -----------------------------
-edges_file <- NULL
-nodes_file <- NULL
-output_file <- NULL
+edges_file <- "Result/NCBI_4395_Batch/07_Network/coocc_network/Annotation/merge_cluster_edges.tsv"
+nodes_file <- "Result/NCBI_4395_Batch/07_Network/coocc_network/Annotation/merge_cluster_nodes.tsv"
+output_file <- "Result/NCBI_4395_Batch/07_Network/coocc_network/Annotation/coocc_network.pdf"
 
 width <- 5000
 height <- 5000
@@ -31,28 +30,30 @@ edge_width <- 2.0
 edge_alpha <- 0.8
 edge_curved <- 0.1
 
-layout_method <- "igraph"  # qgraph or igraph
+layout_method <- "igraph"   # qgraph or igraph
 niter <- 3000
 start_temp_factor <- 2.5
 
 show_labels <- FALSE
 title_text <- NULL
 
-color_by <- "origin_class" # origin_class or community
+color_by <- "origin_class"  # origin_class or community
 include_isolated <- FALSE
 
 seed <- 1
-style <- "compact_disk"    # compact_disk or scattered
-vertex_size_by <- "degree" # fixed or degree or strength
+style <- "compact_disk"     # compact_disk or scattered
+
+vertex_size_by <- "degree"   # fixed / degree / strength
 vertex_size_fixed <- 2
 vertex_size_min <- 2
 vertex_size_max <- 5
 
+# qgraph tuning
 layout_area_coef <- 10
 layout_area_exp <- 1.0
 layout_repulse_exp <- 3.0
 
-# New options for your two requests
+# Overlap and centering controls
 avoid_overlap <- TRUE
 overlap_padding <- 0.1
 
@@ -61,8 +62,12 @@ connected_radius <- 0.90
 isolated_radius_min <- 0.88
 isolated_radius_max <- 0.98
 
+# Palettes (community mode)
+node_palette <- "Set3"
+edge_palette <- "Set3"
+
 # -----------------------------
-# Argument parsing
+# Argument parsing (manual)
 # -----------------------------
 i <- 1
 while (i <= length(args)) {
@@ -72,42 +77,50 @@ while (i <= length(args)) {
     nodes_file <- args[i + 1]; i <- i + 2
   } else if (args[i] == "-o" || args[i] == "--output") {
     output_file <- args[i + 1]; i <- i + 2
+
   } else if (args[i] == "--width") {
     width <- as.integer(args[i + 1]); i <- i + 2
   } else if (args[i] == "--height") {
     height <- as.integer(args[i + 1]); i <- i + 2
+
   } else if (args[i] == "--edge-width") {
     edge_width <- as.numeric(args[i + 1]); i <- i + 2
   } else if (args[i] == "--edge-alpha") {
     edge_alpha <- as.numeric(args[i + 1]); i <- i + 2
   } else if (args[i] == "--edge-curved") {
     edge_curved <- as.numeric(args[i + 1]); i <- i + 2
+
   } else if (args[i] == "--layout") {
     layout_method <- args[i + 1]; i <- i + 2
   } else if (args[i] == "--niter") {
     niter <- as.integer(args[i + 1]); i <- i + 2
   } else if (args[i] == "--start-temp-factor") {
     start_temp_factor <- as.numeric(args[i + 1]); i <- i + 2
-  } else if (args[i] == "--show-labels") {
-    show_labels <- TRUE; i <- i + 1
-  } else if (args[i] == "--title") {
-    title_text <- args[i + 1]; i <- i + 2
-  } else if (args[i] == "--color-by") {
-    color_by <- args[i + 1]; i <- i + 2
-  } else if (args[i] == "--include-isolated") {
-    include_isolated <- TRUE; i <- i + 1
-  } else if (args[i] == "--exclude-isolated") {
-    include_isolated <- FALSE; i <- i + 1
+
   } else if (args[i] == "--layout-area-coef") {
     layout_area_coef <- as.numeric(args[i + 1]); i <- i + 2
   } else if (args[i] == "--layout-area-exp") {
     layout_area_exp <- as.numeric(args[i + 1]); i <- i + 2
   } else if (args[i] == "--layout-repulse-exp") {
     layout_repulse_exp <- as.numeric(args[i + 1]); i <- i + 2
+
+  } else if (args[i] == "--show-labels") {
+    show_labels <- TRUE; i <- i + 1
+  } else if (args[i] == "--title") {
+    title_text <- args[i + 1]; i <- i + 2
+
+  } else if (args[i] == "--color-by") {
+    color_by <- args[i + 1]; i <- i + 2
+  } else if (args[i] == "--include-isolated") {
+    include_isolated <- TRUE; i <- i + 1
+  } else if (args[i] == "--exclude-isolated") {
+    include_isolated <- FALSE; i <- i + 1
+
   } else if (args[i] == "--seed") {
     seed <- as.integer(args[i + 1]); i <- i + 2
   } else if (args[i] == "--style") {
     style <- args[i + 1]; i <- i + 2
+
   } else if (args[i] == "--vertex-size-by") {
     vertex_size_by <- args[i + 1]; i <- i + 2
   } else if (args[i] == "--vertex-size") {
@@ -116,12 +129,14 @@ while (i <= length(args)) {
     vertex_size_min <- as.numeric(args[i + 1]); i <- i + 2
   } else if (args[i] == "--vertex-size-max") {
     vertex_size_max <- as.numeric(args[i + 1]); i <- i + 2
+
   } else if (args[i] == "--avoid-overlap") {
     avoid_overlap <- TRUE; i <- i + 1
   } else if (args[i] == "--no-avoid-overlap") {
     avoid_overlap <- FALSE; i <- i + 1
   } else if (args[i] == "--overlap-padding") {
     overlap_padding <- as.numeric(args[i + 1]); i <- i + 2
+
   } else if (args[i] == "--center-connected") {
     center_connected <- TRUE; i <- i + 1
   } else if (args[i] == "--no-center-connected") {
@@ -132,6 +147,12 @@ while (i <= length(args)) {
     isolated_radius_min <- as.numeric(args[i + 1]); i <- i + 2
   } else if (args[i] == "--isolated-radius-max") {
     isolated_radius_max <- as.numeric(args[i + 1]); i <- i + 2
+
+  } else if (args[i] == "--node-palette") {
+    node_palette <- args[i + 1]; i <- i + 2
+  } else if (args[i] == "--edge-palette") {
+    edge_palette <- args[i + 1]; i <- i + 2
+
   } else {
     i <- i + 1
   }
@@ -144,12 +165,11 @@ if (is.null(edges_file) || is.null(nodes_file) || is.null(output_file)) {
 if (!(layout_method %in% c("igraph", "qgraph"))) stop("layout must be 'igraph' or 'qgraph'")
 if (!(style %in% c("compact_disk", "scattered"))) stop("style must be 'compact_disk' or 'scattered'")
 if (!(vertex_size_by %in% c("fixed", "degree", "strength"))) stop("vertex-size-by must be 'fixed' or 'degree' or 'strength'")
+if (!(color_by %in% c("origin_class", "community"))) stop("color-by must be 'origin_class' or 'community'")
 
 # -----------------------------
 # Helper functions
 # -----------------------------
-
-# Compute FR layout with selected backend
 compute_fr_layout <- function(graph, method, niter, start_temp_factor, area_coef, area_exp, repulse_exp) {
   if (vcount(graph) == 0) return(matrix(numeric(0), ncol = 2))
   if (vcount(graph) == 1) return(matrix(c(0, 0), nrow = 1))
@@ -170,7 +190,6 @@ compute_fr_layout <- function(graph, method, niter, start_temp_factor, area_coef
   }
 }
 
-# Normalize and optionally compress into a disk
 normalize_layout <- function(layout_xy, mode = "compact_disk", scale_scattered = 1.15) {
   if (nrow(layout_xy) == 0) return(layout_xy)
   layout_xy <- norm_coords(layout_xy, xmin = -1, xmax = 1, ymin = -1, ymax = 1)
@@ -184,29 +203,28 @@ normalize_layout <- function(layout_xy, mode = "compact_disk", scale_scattered =
   layout_xy
 }
 
-# Resolve overlaps using a simple repulsion iteration based on node radii
 resolve_overlaps <- function(layout_xy, radii, padding = 0.4, n_iter = 200, step = 0.02) {
   if (nrow(layout_xy) <= 1) return(layout_xy)
   radii2 <- radii + padding
   n <- nrow(layout_xy)
   for (it in seq_len(n_iter)) {
     moved <- FALSE
-    for (i in 1:(n - 1)) {
-      xi <- layout_xy[i, 1]; yi <- layout_xy[i, 2]
-      for (j in (i + 1):n) {
-        dx <- layout_xy[j, 1] - xi
-        dy <- layout_xy[j, 2] - yi
+    for (ii in 1:(n - 1)) {
+      xi <- layout_xy[ii, 1]; yi <- layout_xy[ii, 2]
+      for (jj in (ii + 1):n) {
+        dx <- layout_xy[jj, 1] - xi
+        dy <- layout_xy[jj, 2] - yi
         dist <- sqrt(dx * dx + dy * dy) + 1e-12
-        min_dist <- radii2[i] + radii2[j]
+        min_dist <- radii2[ii] + radii2[jj]
         if (dist < min_dist) {
           overlap <- (min_dist - dist)
           ux <- dx / dist
           uy <- dy / dist
           push <- overlap * 0.5 * step
-          layout_xy[i, 1] <- layout_xy[i, 1] - ux * push
-          layout_xy[i, 2] <- layout_xy[i, 2] - uy * push
-          layout_xy[j, 1] <- layout_xy[j, 1] + ux * push
-          layout_xy[j, 2] <- layout_xy[j, 2] + uy * push
+          layout_xy[ii, 1] <- layout_xy[ii, 1] - ux * push
+          layout_xy[ii, 2] <- layout_xy[ii, 2] - uy * push
+          layout_xy[jj, 1] <- layout_xy[jj, 1] + ux * push
+          layout_xy[jj, 2] <- layout_xy[jj, 2] + uy * push
           moved <- TRUE
         }
       }
@@ -216,7 +234,6 @@ resolve_overlaps <- function(layout_xy, radii, padding = 0.4, n_iter = 200, step
   layout_xy
 }
 
-# Place isolated nodes on an outer ring
 place_isolated_on_ring <- function(n_iso, r_min = 0.88, r_max = 0.98) {
   if (n_iso <= 0) return(matrix(numeric(0), ncol = 2))
   if (n_iso == 1) return(matrix(c(r_max, 0), nrow = 1))
@@ -234,17 +251,19 @@ nodes_df <- read.delim(nodes_file, sep = "\t", stringsAsFactors = FALSE)
 cat(sprintf("Loaded %d edges and %d nodes\n", nrow(edges_df), nrow(nodes_df)))
 
 # -----------------------------
-# Step 2: Normalize edge columns and build graph
+# Step 2: Validate schema and build graph
 # -----------------------------
 cat("Creating igraph graph...\n")
-# Transfer network uses source/target columns (same as coocc)
+
 if (!("source" %in% colnames(edges_df) && "target" %in% colnames(edges_df))) {
-  stop("Edge file must have 'source' and 'target' columns for transfer network")
+  stop("Edge file must have 'source' and 'target' columns for coocc network")
+}
+if (!("id" %in% colnames(nodes_df))) {
+  stop("Nodes file must have 'id' column")
 }
 
-if (!("id" %in% colnames(nodes_df))) stop("Nodes file must have 'id' column")
-
 edge_node_ids <- unique(c(edges_df$source, edges_df$target))
+
 if (include_isolated) {
   cat("Including isolated nodes...\n")
   nodes_df_filtered <- nodes_df
@@ -279,6 +298,10 @@ if (isolated_count > 0) cat(sprintf("Found %d isolated nodes\n", isolated_count)
 vertex_colors <- rep("#808080", vcount(g))
 edge.col <- rep("#999999", ecount(g))
 
+origin_class_colors <- NULL
+num_classes <- 0
+num_communities <- 0
+
 if (color_by == "origin_class") {
   cat("Using origin_class for node colors...\n")
 
@@ -297,32 +320,44 @@ if (color_by == "origin_class") {
 
   if ("origin_class" %in% colnames(nodes_df_filtered)) {
     node_cls <- nodes_df_filtered$origin_class[match(V(g)$name, nodes_df_filtered$id)]
-  } else if ("Class_CRBC" %in% colnames(nodes_df_filtered)) {
-    node_cls <- nodes_df_filtered$Class_CRBC[match(V(g)$name, nodes_df_filtered$id)]
-  } else if ("Class" %in% colnames(nodes_df_filtered)) {
-    node_cls <- nodes_df_filtered$Class[match(V(g)$name, nodes_df_filtered$id)]
   } else {
     node_cls <- rep("Unknown", vcount(g))
   }
   node_cls[is.na(node_cls)] <- "Unknown"
 
-  vertex_colors <- ifelse(node_cls %in% names(class_colors), class_colors[node_cls], "#808080")
+  unique_origin_classes <- unique(node_cls)
+  num_classes <- length(unique_origin_classes)
+
+  origin_class_colors <- character(length(unique_origin_classes))
+  names(origin_class_colors) <- unique_origin_classes
+  for (k in seq_along(unique_origin_classes)) {
+    cn <- unique_origin_classes[k]
+    if (cn %in% names(class_colors)) origin_class_colors[k] <- class_colors[cn]
+    else origin_class_colors[k] <- "#808080"
+  }
+
+  vertex_colors <- origin_class_colors[node_cls]
+  vertex_colors[is.na(vertex_colors)] <- "#808080"
 
   ee <- ends(g, es = E(g), names = FALSE)
   edge.col <- vertex_colors[ee[, 1]]
 
-} else if (color_by == "community") {
+} else {
   cat("Detecting communities using Louvain...\n")
   comm <- cluster_louvain(g)
   mem <- membership(comm)
-  k <- max(mem)
+  num_communities <- max(mem)
 
-  pal <- brewer.pal(min(12, max(3, k)), "Set3")
-  if (k > length(pal)) pal <- colorRampPalette(pal)(k)
-  vertex_colors <- pal[mem]
+  max_colors <- 12
+  colrs <- brewer.pal(min(max_colors, max(3, num_communities)), node_palette)
+  if (num_communities > length(colrs)) colrs <- colorRampPalette(colrs)(num_communities)
 
+  colrs_light <- brewer.pal(min(max_colors, max(3, num_communities)), edge_palette)
+  if (num_communities > length(colrs_light)) colrs_light <- colorRampPalette(colrs_light)(num_communities)
+
+  vertex_colors <- colrs[mem]
   ee <- ends(g, es = E(g), names = FALSE)
-  edge.col <- vertex_colors[ee[, 1]]
+  edge.col <- colrs_light[mem[ee[, 1]]]
 }
 
 # -----------------------------
@@ -333,11 +368,8 @@ cat(sprintf("Vertex size mode: %s\n", vertex_size_by))
 if (vertex_size_by == "fixed") {
   vertex_sizes <- rep(vertex_size_fixed, vcount(g))
 } else if (vertex_size_by == "degree") {
-  if (max(deg_all) == 0) {
-    vertex_sizes <- rep(vertex_size_fixed, vcount(g))
-  } else {
-    vertex_sizes <- rescale(deg_all, to = c(vertex_size_min, vertex_size_max))
-  }
+  if (max(deg_all) == 0) vertex_sizes <- rep(vertex_size_fixed, vcount(g))
+  else vertex_sizes <- rescale(deg_all, to = c(vertex_size_min, vertex_size_max))
 } else {
   if (all(is.na(E(g)$weight))) {
     if (max(deg_all) == 0) vertex_sizes <- rep(vertex_size_fixed, vcount(g))
@@ -349,9 +381,7 @@ if (vertex_size_by == "fixed") {
   }
 }
 
-# Convert vertex size to a layout radius approximation
-# Note: igraph uses size in plotting units, layout is in abstract coords
-# This heuristic works well when layout is normalized to [-1, 1]
+# Layout radius approximation for overlap resolver
 radii <- vertex_sizes / max(vertex_sizes) * 0.06
 
 # -----------------------------
@@ -391,16 +421,14 @@ if (include_isolated && center_connected && style == "compact_disk") {
   layout_fr <- normalize_layout(layout_fr, mode = style)
 }
 
-# Overlap resolution
 if (avoid_overlap && style == "compact_disk") {
   cat("Resolving overlaps...\n")
   layout_fr <- resolve_overlaps(layout_fr, radii = radii, padding = overlap_padding, n_iter = 180, step = 0.03)
-  # Re-normalize slightly to keep within disk
   layout_fr <- normalize_layout(layout_fr, mode = "compact_disk")
 }
 
 # -----------------------------
-# Step 6: Output
+# Step 6: Output device
 # -----------------------------
 cat(sprintf("Plotting network to %s...\n", output_file))
 
@@ -416,7 +444,11 @@ if (output_format == "png") {
 }
 
 if (is.null(title_text)) {
-  plot_title <- "Transfer Network Graph"
+  if (color_by == "community") {
+    plot_title <- sprintf("Co-occurrence Network Graph (Communities: %d)", num_communities)
+  } else {
+    plot_title <- sprintf("Co-occurrence Network Graph (Origin Classes: %d)", num_classes)
+  }
 } else {
   plot_title <- title_text
 }
@@ -452,10 +484,32 @@ plot.igraph(
   vertex.label.cex = 0.4,
   edge.color = adjustcolor(edge.col, alpha.f = edge_alpha),
   edge.width = edge_width,
-  edge.curved = edge_curved
+  edge.curved = edge_curved,
+  main = plot_title,
+  cex.main = 1.0,
+  font.main = 2
 )
+
+if (color_by == "origin_class" && !is.null(origin_class_colors) && length(origin_class_colors) > 0) {
+  legend(
+    "bottomright",
+    legend = names(origin_class_colors),
+    col = origin_class_colors,
+    pch = 19,
+    cex = 0.7,
+    pt.cex = 1.2,
+    bty = "n",
+    title = "Origin Class",
+    inset = c(0.02, 0.02)
+  )
+}
 
 dev.off()
 
 cat("Network visualization completed successfully\n")
 cat(sprintf("Output saved to: %s\n", output_file))
+if (color_by == "community") {
+  cat(sprintf("Number of communities: %d\n", num_communities))
+} else {
+  cat(sprintf("Number of origin classes: %d\n", num_classes))
+}

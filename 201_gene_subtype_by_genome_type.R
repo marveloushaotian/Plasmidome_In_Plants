@@ -6,11 +6,11 @@
 #              Defense_Subtype, AntiDS_Type, and AMR_Type.
 #              For each AMR subtype, show four hosts together.
 #              Generate separate plots for each Contig_Type3.
-# Usage: Rscript 201_gene_subtype_by_genome_type.R -i <input.csv> -o <output_dir> [-n <top_n>]
+# Usage: Rscript 201_gene_subtype_by_genome_type.R [-i <input.csv>] [-o <output_dir>] [-n <top_n>]
 #
 # Arguments:
-#   -i: Input CSV file path (required)
-#   -o: Output directory for results (required)
+#   -i: Input CSV file path
+#   -o: Output directory for results
 #   -n: Number of top subtypes to analyze for each type (default: 15)
 # =============================================================================
 
@@ -25,9 +25,11 @@ suppressPackageStartupMessages({
 
 # Parse command line arguments
 parser <- ArgumentParser(description = "Generate statistics and plots for top gene subtypes")
-parser$add_argument("-i", "--input", required = TRUE, 
-                    help = "Input CSV file path (e.g., Contig_Sample_Mapping_Final.csv)")
-parser$add_argument("-o", "--output", required = TRUE,
+parser$add_argument("-i", "--input",
+                    default = "Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv",
+                    help = "Input CSV file path")
+parser$add_argument("-o", "--output",
+                    default = "Result/NCBI_4395_Batch/01_Gene_Distribution_Bar",
                     help = "Output directory for results")
 parser$add_argument("-n", "--top-n", type = "integer", default = 15,
                     help = "Number of top subtypes to analyze for each type (default: 15)")
@@ -223,4 +225,3 @@ cat(sprintf("  - AntiDS_Type_Top%d_CountPerkb_ByHost_<Contig_Type3>.pdf\n", args
 cat(sprintf("  - AMR_Type_Top%d_CountPerkb_ByHost_ContigType3.csv\n", args$top_n))
 cat(sprintf("  - AMR_Type_Top%d_CountPerkb_ByHost_<Contig_Type3>.pdf\n", args$top_n))
 cat("\n")
-

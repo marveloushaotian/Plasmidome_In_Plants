@@ -14,15 +14,22 @@ Arguments:
     -t: Gene type to expand: 'amr', 'defense', or 'antidefense'
 
 Example:
-    python 212_expand_gene_types.py -i Result/NCBI_4395_Batch/Contig_Sample_Mapping_Final_with_Provirus_Overlap_GTDB_corrected.csv -o Result/NCBI_4395_Batch/06_Cluter/Contig_Sample_Mapping_Expanded_AMR.csv -t amr
-    python 212_expand_gene_types.py -i Result/NCBI_4395_Batch/Contig_Sample_Mapping_Final_with_Provirus_Overlap_GTDB_corrected.csv -o Result/NCBI_4395_Batch/06_Cluter/Contig_Sample_Mapping_Expanded_Defense.csv -t defense
-    python 212_expand_gene_types.py -i Result/NCBI_4395_Batch/Contig_Sample_Mapping_Final_with_Provirus_Overlap_GTDB_corrected.csv -o Result/NCBI_4395_Batch/06_Cluter/Contig_Sample_Mapping_Expanded_AntiDefense.csv -t antidefense
+    python 212_expand_gene_types.py -t amr
+    python 212_expand_gene_types.py -t defense
+    python 212_expand_gene_types.py -t antidefense
 """
 
 import argparse
 import pandas as pd
 from collections import Counter
 from tqdm import tqdm
+
+DEFAULT_MASTER_TABLE = "Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv"
+DEFAULT_OUTPUTS = {
+    "amr": "Result/NCBI_4395_Batch/06_Cluter/Contig_Sample_Mapping_Expanded_AMR.csv",
+    "defense": "Result/NCBI_4395_Batch/06_Cluter/Contig_Sample_Mapping_Expanded_Defense.csv",
+    "antidefense": "Result/NCBI_4395_Batch/06_Cluter/Contig_Sample_Mapping_Expanded_AntiDefense.csv",
+}
 
 
 def parse_args():
@@ -31,15 +38,18 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__
     )
-    parser.add_argument("-i", "--input", required=True, help="Input CSV file path")
-    parser.add_argument("-o", "--output", required=True, help="Output CSV file path")
+    parser.add_argument("-i", "--input", default=DEFAULT_MASTER_TABLE, help="Input CSV file path")
+    parser.add_argument("-o", "--output", default=None, help="Output CSV file path")
     parser.add_argument(
         "-t", "--type",
-        required=True,
+        default="defense",
         choices=['amr', 'defense', 'antidefense'],
-        help="Gene type to expand: 'amr', 'defense', or 'antidefense'"
+        help="Gene type to expand: 'amr', 'defense', or 'antidefense' (default: defense)"
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.output is None:
+        args.output = DEFAULT_OUTPUTS[args.type]
+    return args
 
 
 def count_gene_types(gene_str):
@@ -127,4 +137,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

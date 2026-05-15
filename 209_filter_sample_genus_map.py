@@ -14,6 +14,11 @@ import argparse
 import pandas as pd
 from tqdm import tqdm
 
+DEFAULT_INTERSECTION = "Result/NCBI_4395_Batch/05_Tree/Genus_Level_Intersection/Genus_CRBC_Updated_Intersection.csv"
+DEFAULT_SAMPLE_MAP = "Result/NCBI_4395_Batch/05_Tree/Genus_Level_Intersection/Sample_Genus_map.csv"
+DEFAULT_OUTPUT = "Result/NCBI_4395_Batch/05_Tree/Genus_Level_Intersection/Sample_Genus_map_Intersection.csv"
+
+
 def filter_sample_genus_map(intersection_file, sample_genus_map_file, output_file):
     """
     Filter Sample_Genus_map.csv based on Genus_CRBC_Updated values in intersection file.
@@ -72,13 +77,13 @@ Examples:
         """
     )
     parser.add_argument('-i', '--intersection', 
-                        required=True,
+                        default=DEFAULT_INTERSECTION,
                         help='Input CSV file with Genus_CRBC_Updated intersection values')
     parser.add_argument('-s', '--sample-map',
-                        required=True,
+                        default=DEFAULT_SAMPLE_MAP,
                         help='Input CSV file (Sample_Genus_map.csv) to filter')
     parser.add_argument('-o', '--output',
-                        required=True,
+                        default=DEFAULT_OUTPUT,
                         help='Output CSV file path')
     
     args = parser.parse_args()
@@ -86,4 +91,3 @@ Examples:
 
 if __name__ == '__main__':
     main()
-

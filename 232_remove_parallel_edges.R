@@ -5,11 +5,13 @@
 
 args <- commandArgs(trailingOnly = TRUE)
 
-if (length(args) < 1) {
-  stop("Usage: Rscript remove_parallel_edges.R input.tsv [output.tsv]")
-}
+DEFAULT_INPUT <- "Result/NCBI_4395_Batch/07_Network/isolate_network/Plasmid_annotation_explore/All_genome_sharing_edges_with_parallel.tsv"
 
-input_file <- args[1]
+if (length(args) < 1) {
+  input_file <- DEFAULT_INPUT
+} else {
+  input_file <- args[1]
+}
 if (length(args) >= 2) {
   output_file <- args[2]
 } else {

@@ -14,6 +14,10 @@ import argparse
 import re
 from tqdm import tqdm
 
+DEFAULT_TAXONOMY = "Result/NCBI_4395_Batch/05_Tree/Genus_Level/bac120_metadata_r207.tsv"
+DEFAULT_GENUS = "Result/NCBI_4395_Batch/05_Tree/Genus_Level/Genus_Name.csv"
+DEFAULT_OUTPUT = "Result/NCBI_4395_Batch/05_Tree/Genus_Level/filtered_metadata.tsv"
+
 
 def extract_genus_from_taxonomy(taxonomy_string):
     """
@@ -39,17 +43,17 @@ def main():
     )
     parser.add_argument(
         "-t", "--taxonomy",
-        required=True,
+        default=DEFAULT_TAXONOMY,
         help="Input metadata TSV file (bac120_metadata_r207.tsv)"
     )
     parser.add_argument(
         "-g", "--genus",
-        required=True,
+        default=DEFAULT_GENUS,
         help="Input genus CSV file (Genus_Name.csv)"
     )
     parser.add_argument(
         "-o", "--output",
-        required=True,
+        default=DEFAULT_OUTPUT,
         help="Output TSV file path"
     )
     
@@ -120,4 +124,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

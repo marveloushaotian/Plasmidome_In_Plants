@@ -15,7 +15,7 @@ This means the repository is not just a pipeline repository. It is the main code
 
 ## Main Workflow
 
-The core end-to-end workflow is implemented in the Nextflow directories. As a representative example, the [`NEXTFLOW`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW) directory shows the canonical structure of the pipeline.
+The core end-to-end workflow is implemented in the Nextflow directories under [`workflows/nextflow`](workflows/nextflow). As a representative example, [`workflows/nextflow/NEXTFLOW`](workflows/nextflow/NEXTFLOW) shows the canonical structure of the pipeline.
 
 At a high level, the Nextflow workflow does the following:
 
@@ -34,12 +34,12 @@ So the pipeline covers the project from raw sequencing input all the way to stru
 
 ## Why There Are Multiple Nextflow Directories
 
-This repository contains four related workflow directories:
+This repository contains four related workflow directories, all grouped under [`workflows/nextflow`](workflows/nextflow):
 
-- [`NEXTFLOW`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW)
-- [`NEXTFLOW_PIPELINE`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW_PIPELINE)
-- [`NEXTFLOW_Computerome`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW_Computerome)
-- [`NEXFFLOW_HALF`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXFFLOW_HALF)
+- [`workflows/nextflow/NEXTFLOW`](workflows/nextflow/NEXTFLOW)
+- [`workflows/nextflow/NEXTFLOW_PIPELINE`](workflows/nextflow/NEXTFLOW_PIPELINE)
+- [`workflows/nextflow/NEXTFLOW_Computerome`](workflows/nextflow/NEXTFLOW_Computerome)
+- [`workflows/nextflow/NEXFFLOW_HALF`](workflows/nextflow/NEXFFLOW_HALF)
 
 These directories reflect the history of the project as the workflow was migrated and adapted across different compute environments and servers during the course of analysis. They should be understood as environment-specific or stage-specific workflow variants rather than independent scientific projects.
 
@@ -47,12 +47,12 @@ For explaining the workflow structure, `NEXTFLOW` is the clearest baseline examp
 
 ## Downstream Analysis Scripts
 
-After the Nextflow workflow generates annotation tables and intermediate result files, the numbered Python and R scripts in the repository root are used for downstream analysis.
+After the Nextflow workflow generates annotation tables and intermediate result files, the master table is assembled with [`101_build_master_table.py`](101_build_master_table.py). The canonical input and output files for this table are kept under [`Collect/NCBI_4395_Batch/Master_Table`](Collect/NCBI_4395_Batch/Master_Table), with the frequently used final table at [`Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv`](Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv).
+
+The numbered Python and R scripts in the repository root are then used for downstream analysis.
 
 These scripts are used for tasks such as:
 
-- aggregating and cleaning annotation outputs
-- merging defense, AMR, contig, taxonomy, and sample-level tables
 - calculating diversity, richness, and subtype composition summaries
 - preparing taxonomic summaries and comparative matrices
 - generating PCoA, heatmaps, stacked bar plots, Venn-style comparisons, and other figures
@@ -67,24 +67,25 @@ The repository is organized around the full project workflow rather than a singl
 
 ### Workflow directories
 
-- [`NEXTFLOW`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW): canonical example of the main pipeline layout
-- [`NEXTFLOW_PIPELINE`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW_PIPELINE): alternate workflow organization used during development
-- [`NEXTFLOW_Computerome`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW_Computerome): Computerome-adapted workflow version
-- [`NEXFFLOW_HALF`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXFFLOW_HALF): partial or intermediate workflow snapshot
+- [`workflows/nextflow/NEXTFLOW`](workflows/nextflow/NEXTFLOW): canonical example of the main pipeline layout
+- [`workflows/nextflow/NEXTFLOW_PIPELINE`](workflows/nextflow/NEXTFLOW_PIPELINE): alternate workflow organization used during development
+- [`workflows/nextflow/NEXTFLOW_Computerome`](workflows/nextflow/NEXTFLOW_Computerome): Computerome-adapted workflow version
+- [`workflows/nextflow/NEXFFLOW_HALF`](workflows/nextflow/NEXFFLOW_HALF): partial or intermediate workflow snapshot
 
 ### Root-level analysis scripts
 
 - `001_*.sh`: data download and raw input preparation
-- `101_*.py` to `107_*.py`: table aggregation, renaming, merging, and annotation cleanup
+- [`101_build_master_table.py`](101_build_master_table.py): canonical master table builder from the four normalized input files to the final `05_master_contig_annotation_table.csv`
+- [`102_extract_first_sample_per_species.py`](102_extract_first_sample_per_species.py): helper extraction script retained from the early table-analysis layer
 - `201_*.R` onward: statistical analysis, comparative summaries, ordination, visualization, and figure generation
-- `217_*.py` onward plus `plot_network_*.R`: graph and network annotation, network construction, and network plotting
+- `217_*.py` onward plus `226_*.R` to `232_*.R`: graph and network annotation, network construction, and network plotting
 
 ### Project-linked directories
 
-- [`Collect`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/Collect): collected inputs and project materials
-- [`Reference`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/Reference): reference files and supporting materials
-- [`Report`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/Report): report outputs
-- [`Result`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/Result): project results and exports
+- [`Collect`](Collect): collected inputs and project materials
+- [`Reference`](Reference): reference files and supporting materials
+- [`Report`](Report): report outputs
+- [`Result`](Result): project results and exports
 
 Depending on the machine, these may be symlinks to external project storage.
 
@@ -92,7 +93,7 @@ Depending on the machine, these may be symlinks to external project storage.
 
 For someone new to the project, the recommended way to understand and use the repository is:
 
-1. identify which Nextflow directory matches the target compute environment
+1. identify which directory under `workflows/nextflow` matches the target compute environment
 2. inspect `main.nf`, `nextflow.config`, `modules/`, and `bin/` in that workflow directory
 3. prepare raw paired-end reads in the expected naming format
 4. confirm environment paths, databases, and required resource files for the selected workflow directory
@@ -101,9 +102,9 @@ For someone new to the project, the recommended way to understand and use the re
 
 For understanding the logic of the pipeline itself, start with:
 
-- [`NEXTFLOW/main.nf`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW/main.nf)
-- [`NEXTFLOW/nextflow.config`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW/nextflow.config)
-- [`NEXTFLOW/modules/`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/NEXTFLOW/modules)
+- [`workflows/nextflow/NEXTFLOW/main.nf`](workflows/nextflow/NEXTFLOW/main.nf)
+- [`workflows/nextflow/NEXTFLOW/nextflow.config`](workflows/nextflow/NEXTFLOW/nextflow.config)
+- [`workflows/nextflow/NEXTFLOW/modules`](workflows/nextflow/NEXTFLOW/modules)
 
 ## Contribution And Project Roles
 
@@ -119,4 +120,4 @@ Correspondence:
 
 ## License
 
-MIT License. See [`LICENSE`](/Users/fnd909/Warehouse/GitHub/Plasmidome_In_Plants/LICENSE).
+MIT License. See [`LICENSE`](LICENSE).

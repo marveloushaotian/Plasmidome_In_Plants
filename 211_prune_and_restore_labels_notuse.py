@@ -24,6 +24,11 @@ import argparse
 from collections import defaultdict
 from ete3 import Tree
 
+DEFAULT_TREE = "Result/NCBI_4395_Batch/05_Tree/Genus_Level/bac120_r207.tree"
+DEFAULT_ID_FILE = "Result/NCBI_4395_Batch/05_Tree/Genus_Level/Archive/filtered_bac120_metadata_r207_unique_id.tsv"
+DEFAULT_TAXONOMY_FILE = "Result/NCBI_4395_Batch/05_Tree/Genus_Level/Archive/filtered_bac120_metadata_r207_unique_id_alllevel.csv"
+DEFAULT_OUTPUT = "Result/NCBI_4395_Batch/05_Tree/Genus_Level/Archive/pruned_tree_with_internal_labels.tree"
+
 
 def read_id_list(id_file):
     """Read genome IDs from TSV file."""
@@ -227,22 +232,22 @@ def main():
     
     parser.add_argument(
         '-t', '--tree',
-        required=True,
+        default=DEFAULT_TREE,
         help='Input tree file (bac120_r207.tree)'
     )
     parser.add_argument(
         '-i', '--id-file',
-        required=True,
+        default=DEFAULT_ID_FILE,
         help='Input ID file (filtered_bac120_metadata_r207_unique_id.tsv)'
     )
     parser.add_argument(
         '-x', '--taxonomy-file',
-        required=True,
+        default=DEFAULT_TAXONOMY_FILE,
         help='Input taxonomy file (filtered_bac120_metadata_r207_unique_id_alllevel.csv)'
     )
     parser.add_argument(
         '-o', '--output',
-        required=True,
+        default=DEFAULT_OUTPUT,
         help='Output tree file'
     )
     
@@ -253,4 +258,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

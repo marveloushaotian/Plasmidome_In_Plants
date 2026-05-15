@@ -1,13 +1,10 @@
 #!/usr/bin/env Rscript
-# 1) Plot co-occurrence network with FR layout
-# 2) Keep original input schema: edges need source/target, nodes need id
-# 3) Provide two styles: compact_disk and scattered
-# 4) Optional: center connected nodes when isolated nodes included
-# 5) Optional: resolve node overlaps after layout
-# 6) Node size: fixed / degree / strength
-# 7) Color: origin_class / community
-# 8) NEW: Shape by Host column in nodes file
-# 9) NEW: Annotate nodes with nodes$label text on top of points
+# 1) Plot isolate network with FR layout
+# 2) Styles: compact_disk and scattered
+# 3) Optional: center connected nodes when isolated nodes are included
+# 4) Optional: resolve node overlaps after layout
+# 5) NEW: Shape by Host column in nodes file
+# 6) NEW: Annotate nodes with nodes$label text
 
 suppressPackageStartupMessages({
   library(igraph)
@@ -18,80 +15,68 @@ suppressPackageStartupMessages({
 
 args <- commandArgs(trailingOnly = TRUE)
 
-if (length(args) < 3) {
-  stop("Usage: Rscript plot_network_coocc_igraph_v3_hostshape_label.R -e edges.tsv -n nodes.tsv -o output.png [options]")
-}
-
 # -----------------------------
 # Defaults
 # -----------------------------
-edges_file <- NULL
-nodes_file <- NULL
-output_file <- NULL
+edges_file <- "Result/NCBI_4395_Batch/07_Network/isolate_network/Plasmid_annotation_explore/All_genome_sharing_edges.tsv"
+nodes_file <- "Result/NCBI_4395_Batch/07_Network/isolate_network/Plasmid_annotation_explore/All_genome_sharing_nodes.tsv"
+output_file <- "Result/NCBI_4395_Batch/07_Network/isolate_network/Plasmid_annotation_explore/isolate_network_merged.pdf"
 
-width <- 2000
-height <- 2000
+width <- 4000
+height <- 4000
 
-edge_width <- 0.7
-edge_alpha <- 0.5
-edge_curved <- 0.3
+edge_width <-1.5
+edge_alpha <- 0.8
+edge_curved <- 0.2
 
-layout_method <- "igraph"   # qgraph or igraph
-niter <- 1000
+layout_method <- "igraph"  # qgraph or igraph
+niter <- 2000
 start_temp_factor <- 2.5
 
-show_labels <- FALSE        # legacy toggle: label uses vertex names
+show_labels <- FALSE
 title_text <- NULL
 
-color_by <- "origin_class"  # origin_class or community
+color_by <- "origin_class" # origin_class or community
 include_isolated <- FALSE
 
 seed <- 1
-style <- "compact_disk"     # compact_disk or scattered
-
-vertex_size_by <- "degree"   # fixed / degree / strength
-vertex_size_fixed <- 5
+style <- "compact_disk"    # compact_disk or scattered
+vertex_size_by <- "degree" # fixed or degree or strength
+vertex_size_fixed <- 2
 vertex_size_min <- 2
-vertex_size_max <- 6
+vertex_size_max <- 5
 
-# qgraph tuning
-layout_area_coef <- 10
+layout_area_coef <- 20
 layout_area_exp <- 1.0
-layout_repulse_exp <- 3.0
-
-# Overlap and centering controls
+layout_repulse_exp <- 3.2
 avoid_overlap <- TRUE
-overlap_padding <- 0.2
+overlap_padding <- 0.1
 
 center_connected <- TRUE
 connected_radius <- 0.90
 isolated_radius_min <- 0.88
 isolated_radius_max <- 0.98
 
-# Palettes (community mode)
-node_palette <- "Set3"
-edge_palette <- "Set3"
-
 # -----------------------------
 # NEW: shape and annotation controls
 # -----------------------------
-shape_by_host <- TRUE          # enable shape mapping based on nodes$Host
-host_col <- "Host"             # column name in nodes file
+shape_by_host <- TRUE
+host_col <- "Host"
 host_unknown <- "Unknown"
 host_legend_title <- "Host"
 
-annotate_by_label <- TRUE      # enable text annotation using nodes$label
-label_col <- "label"           # column name in nodes file
+annotate_by_label <- TRUE
+label_col <- "label"
 label_cex <- 0.45
 label_color <- "black"
-label_font <- 2
-label_offset_factor <- 0.012   # offset relative to plot range to reduce overlap with points
+label_font <- 0.2
+label_offset_factor <- 0.012
 
-# manual pch set for up to many hosts (base R symbols)
+# Base R pch pool
 pch_pool <- c(16, 17, 15, 18, 3, 4, 8, 0, 1, 2, 5, 6, 7, 9, 10, 11, 12, 13, 14)
 
 # -----------------------------
-# Argument parsing (manual)
+# Argument parsing
 # -----------------------------
 i <- 1
 while (i <= length(args)) {
@@ -121,13 +106,6 @@ while (i <= length(args)) {
   } else if (args[i] == "--start-temp-factor") {
     start_temp_factor <- as.numeric(args[i + 1]); i <- i + 2
 
-  } else if (args[i] == "--layout-area-coef") {
-    layout_area_coef <- as.numeric(args[i + 1]); i <- i + 2
-  } else if (args[i] == "--layout-area-exp") {
-    layout_area_exp <- as.numeric(args[i + 1]); i <- i + 2
-  } else if (args[i] == "--layout-repulse-exp") {
-    layout_repulse_exp <- as.numeric(args[i + 1]); i <- i + 2
-
   } else if (args[i] == "--show-labels") {
     show_labels <- TRUE; i <- i + 1
   } else if (args[i] == "--title") {
@@ -139,6 +117,13 @@ while (i <= length(args)) {
     include_isolated <- TRUE; i <- i + 1
   } else if (args[i] == "--exclude-isolated") {
     include_isolated <- FALSE; i <- i + 1
+
+  } else if (args[i] == "--layout-area-coef") {
+    layout_area_coef <- as.numeric(args[i + 1]); i <- i + 2
+  } else if (args[i] == "--layout-area-exp") {
+    layout_area_exp <- as.numeric(args[i + 1]); i <- i + 2
+  } else if (args[i] == "--layout-repulse-exp") {
+    layout_repulse_exp <- as.numeric(args[i + 1]); i <- i + 2
 
   } else if (args[i] == "--seed") {
     seed <- as.integer(args[i + 1]); i <- i + 2
@@ -171,11 +156,6 @@ while (i <= length(args)) {
     isolated_radius_min <- as.numeric(args[i + 1]); i <- i + 2
   } else if (args[i] == "--isolated-radius-max") {
     isolated_radius_max <- as.numeric(args[i + 1]); i <- i + 2
-
-  } else if (args[i] == "--node-palette") {
-    node_palette <- args[i + 1]; i <- i + 2
-  } else if (args[i] == "--edge-palette") {
-    edge_palette <- args[i + 1]; i <- i + 2
 
   # NEW: Host shapes
   } else if (args[i] == "--shape-by-host") {
@@ -303,19 +283,21 @@ nodes_df <- read.delim(nodes_file, sep = "\t", stringsAsFactors = FALSE)
 cat(sprintf("Loaded %d edges and %d nodes\n", nrow(edges_df), nrow(nodes_df)))
 
 # -----------------------------
-# Step 2: Validate schema and build graph
+# Step 2: Normalize edge columns and build graph
 # -----------------------------
 cat("Creating igraph graph...\n")
+if ("g1" %in% colnames(edges_df) && "g2" %in% colnames(edges_df)) {
+  edges_df$source <- edges_df$g1
+  edges_df$target <- edges_df$g2
+} else if ("source" %in% colnames(edges_df) && "target" %in% colnames(edges_df)) {
+  # keep
+} else {
+  stop("Edge file must have g1/g2 or source/target columns")
+}
 
-if (!("source" %in% colnames(edges_df) && "target" %in% colnames(edges_df))) {
-  stop("Edge file must have 'source' and 'target' columns for coocc network")
-}
-if (!("id" %in% colnames(nodes_df))) {
-  stop("Nodes file must have 'id' column")
-}
+if (!("id" %in% colnames(nodes_df))) stop("Nodes file must have 'id' column")
 
 edge_node_ids <- unique(c(edges_df$source, edges_df$target))
-
 if (include_isolated) {
   cat("Including isolated nodes...\n")
   nodes_df_filtered <- nodes_df
@@ -350,10 +332,6 @@ if (isolated_count > 0) cat(sprintf("Found %d isolated nodes\n", isolated_count)
 vertex_colors <- rep("#808080", vcount(g))
 edge.col <- rep("#999999", ecount(g))
 
-origin_class_colors <- NULL
-num_classes <- 0
-num_communities <- 0
-
 if (color_by == "origin_class") {
   cat("Using origin_class for node colors...\n")
 
@@ -372,24 +350,16 @@ if (color_by == "origin_class") {
 
   if ("origin_class" %in% colnames(nodes_df_filtered)) {
     node_cls <- nodes_df_filtered$origin_class[match(V(g)$name, nodes_df_filtered$id)]
+  } else if ("Class_CRBC" %in% colnames(nodes_df_filtered)) {
+    node_cls <- nodes_df_filtered$Class_CRBC[match(V(g)$name, nodes_df_filtered$id)]
+  } else if ("Class" %in% colnames(nodes_df_filtered)) {
+    node_cls <- nodes_df_filtered$Class[match(V(g)$name, nodes_df_filtered$id)]
   } else {
     node_cls <- rep("Unknown", vcount(g))
   }
-  node_cls[is.na(node_cls)] <- "Unknown"
+  node_cls[is.na(node_cls) | node_cls == ""] <- "Unknown"
 
-  unique_origin_classes <- unique(node_cls)
-  num_classes <- length(unique_origin_classes)
-
-  origin_class_colors <- character(length(unique_origin_classes))
-  names(origin_class_colors) <- unique_origin_classes
-  for (k in seq_along(unique_origin_classes)) {
-    cn <- unique_origin_classes[k]
-    if (cn %in% names(class_colors)) origin_class_colors[k] <- class_colors[cn]
-    else origin_class_colors[k] <- "#808080"
-  }
-
-  vertex_colors <- origin_class_colors[node_cls]
-  vertex_colors[is.na(vertex_colors)] <- "#808080"
+  vertex_colors <- ifelse(node_cls %in% names(class_colors), class_colors[node_cls], "#808080")
 
   ee <- ends(g, es = E(g), names = FALSE)
   edge.col <- vertex_colors[ee[, 1]]
@@ -398,18 +368,14 @@ if (color_by == "origin_class") {
   cat("Detecting communities using Louvain...\n")
   comm <- cluster_louvain(g)
   mem <- membership(comm)
-  num_communities <- max(mem)
+  k <- max(mem)
 
-  max_colors <- 12
-  colrs <- brewer.pal(min(max_colors, max(3, num_communities)), node_palette)
-  if (num_communities > length(colrs)) colrs <- colorRampPalette(colrs)(num_communities)
+  pal <- brewer.pal(min(12, max(3, k)), "Set3")
+  if (k > length(pal)) pal <- colorRampPalette(pal)(k)
+  vertex_colors <- pal[mem]
 
-  colrs_light <- brewer.pal(min(max_colors, max(3, num_communities)), edge_palette)
-  if (num_communities > length(colrs_light)) colrs_light <- colorRampPalette(colrs_light)(num_communities)
-
-  vertex_colors <- colrs[mem]
   ee <- ends(g, es = E(g), names = FALSE)
-  edge.col <- colrs_light[mem[ee[, 1]]]
+  edge.col <- vertex_colors[ee[, 1]]
 }
 
 # -----------------------------
@@ -433,11 +399,10 @@ if (vertex_size_by == "fixed") {
   }
 }
 
-# Layout radius approximation for overlap resolver
 radii <- vertex_sizes / max(vertex_sizes) * 0.06
 
 # -----------------------------
-# Step 4.5: NEW shapes by Host
+# Step 4.5: Shapes by Host
 # -----------------------------
 vertex_pch <- rep(16, vcount(g))
 host_levels <- character(0)
@@ -451,14 +416,12 @@ if (shape_by_host) {
   host_vec[is.na(host_vec) | host_vec == ""] <- host_unknown
 
   host_levels <- sort(unique(host_vec))
-  # recycle pch_pool if too many hosts
-  # Use filled symbols (21-25) that support borders
   host_to_pch <- setNames(pch_pool[((seq_along(host_levels) - 1) %% length(pch_pool)) + 1], host_levels)
   vertex_pch <- unname(host_to_pch[host_vec])
 }
 
 # -----------------------------
-# Step 4.6: NEW annotation text by label column
+# Step 4.6: Annotation by label
 # -----------------------------
 vertex_annot <- rep(NA_character_, vcount(g))
 if (annotate_by_label) {
@@ -514,7 +477,7 @@ if (avoid_overlap && style == "compact_disk") {
 }
 
 # -----------------------------
-# Step 6: Output device
+# Step 6: Output
 # -----------------------------
 cat(sprintf("Plotting network to %s...\n", output_file))
 
@@ -529,15 +492,7 @@ if (output_format == "png") {
   png(output_file, width = width, height = height, res = 300)
 }
 
-if (is.null(title_text)) {
-  if (color_by == "community") {
-    plot_title <- sprintf("Co-occurrence Network Graph (Communities: %d)", num_communities)
-  } else {
-    plot_title <- sprintf("Co-occurrence Network Graph (Origin Classes: %d)", num_classes)
-  }
-} else {
-  plot_title <- title_text
-}
+plot_title <- if (is.null(title_text)) "Isolate Network Graph" else title_text
 
 par(bg = "white", mar = c(2, 2, 3, 2))
 
@@ -554,8 +509,8 @@ if (style == "compact_disk") {
 }
 
 # -----------------------------
-# Plot: draw edges and vertices with base symbols
-# We set vertex.shape to "none" and draw points ourselves
+# Plot edges first, then points and text
+# Key: vertex.size = 0 prevents edge endpoint trimming
 # -----------------------------
 plot.igraph(
   g,
@@ -575,7 +530,7 @@ plot.igraph(
   font.main = 2
 )
 
-# Draw vertices as points with pch mapped by Host
+# Draw nodes with Host-dependent pch
 points(
   layout_fr[, 1], layout_fr[, 2],
   pch = vertex_pch,
@@ -583,7 +538,7 @@ points(
   col = vertex_colors
 )
 
-# Optional: annotate with nodes$label
+# Optional label annotation
 if (annotate_by_label && any(!is.na(vertex_annot))) {
   dx <- diff(par("usr")[1:2])
   dy <- diff(par("usr")[3:4])
@@ -597,21 +552,7 @@ if (annotate_by_label && any(!is.na(vertex_annot))) {
   )
 }
 
-# Legends
-if (color_by == "origin_class" && !is.null(origin_class_colors) && length(origin_class_colors) > 0) {
-  legend(
-    "bottomright",
-    legend = names(origin_class_colors),
-    col = origin_class_colors,
-    pch = 16,
-    cex = 0.7,
-    pt.cex = 1.2,
-    bty = "n",
-    title = "Origin Class",
-    inset = c(0.02, 0.02)
-  )
-}
-
+# Host legend (shapes)
 if (shape_by_host && length(host_levels) > 0) {
   legend(
     "topleft",
@@ -630,14 +571,5 @@ dev.off()
 
 cat("Network visualization completed successfully\n")
 cat(sprintf("Output saved to: %s\n", output_file))
-if (color_by == "community") {
-  cat(sprintf("Number of communities: %d\n", num_communities))
-} else {
-  cat(sprintf("Number of origin classes: %d\n", num_classes))
-}
-if (shape_by_host) {
-  cat(sprintf("Host shapes enabled using column: %s\n", host_col))
-}
-if (annotate_by_label) {
-  cat(sprintf("Node annotation enabled using column: %s\n", label_col))
-}
+cat(sprintf("Host shapes: %s (column: %s)\n", ifelse(shape_by_host, "ON", "OFF"), host_col))
+cat(sprintf("Label annotation: %s (column: %s)\n", ifelse(annotate_by_label, "ON", "OFF"), label_col))

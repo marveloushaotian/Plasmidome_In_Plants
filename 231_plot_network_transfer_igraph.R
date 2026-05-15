@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-# 1) Plot isolate network with FR layout
+# 1) Plot transfer network with FR layout
 # 2) Styles: compact_disk and scattered
 # 3) Optional: center connected nodes when isolated nodes are included
 # 4) Optional: resolve node overlaps after layout
@@ -13,19 +13,15 @@ suppressPackageStartupMessages({
 
 args <- commandArgs(trailingOnly = TRUE)
 
-if (length(args) < 3) {
-  stop("Usage: Rscript plot_network_isolate_igraph.R -e edges.tsv -n nodes.tsv -o output.png [options]")
-}
-
 # -----------------------------
 # Defaults
 # -----------------------------
-edges_file <- NULL
-nodes_file <- NULL
-output_file <- NULL
+edges_file <- "Result/NCBI_4395_Batch/07_Network/transfer_network/Annotation/Medicago_linkage_contig_edges.tsv"
+nodes_file <- "Result/NCBI_4395_Batch/07_Network/transfer_network/Annotation/Medicago_linkage_contig_nodes.tsv"
+output_file <- "Result/NCBI_4395_Batch/07_Network/transfer_network/Annotation/Medicago_transfer_network.pdf"
 
-width <- 2000
-height <- 2000
+width <- 5000
+height <- 5000
 
 edge_width <- 2.0
 edge_alpha <- 0.8
@@ -39,7 +35,7 @@ show_labels <- FALSE
 title_text <- NULL
 
 color_by <- "origin_class" # origin_class or community
-include_isolated <- TRUE
+include_isolated <- FALSE
 
 seed <- 1
 style <- "compact_disk"    # compact_disk or scattered
@@ -237,13 +233,9 @@ cat(sprintf("Loaded %d edges and %d nodes\n", nrow(edges_df), nrow(nodes_df)))
 # Step 2: Normalize edge columns and build graph
 # -----------------------------
 cat("Creating igraph graph...\n")
-if ("g1" %in% colnames(edges_df) && "g2" %in% colnames(edges_df)) {
-  edges_df$source <- edges_df$g1
-  edges_df$target <- edges_df$g2
-} else if ("source" %in% colnames(edges_df) && "target" %in% colnames(edges_df)) {
-  # keep
-} else {
-  stop("Edge file must have g1/g2 or source/target columns")
+# Transfer network uses source/target columns (same as coocc)
+if (!("source" %in% colnames(edges_df) && "target" %in% colnames(edges_df))) {
+  stop("Edge file must have 'source' and 'target' columns for transfer network")
 }
 
 if (!("id" %in% colnames(nodes_df))) stop("Nodes file must have 'id' column")
@@ -420,7 +412,7 @@ if (output_format == "png") {
 }
 
 if (is.null(title_text)) {
-  plot_title <- "Isolate Network Graph"
+  plot_title <- "Transfer Network Graph"
 } else {
   plot_title <- title_text
 }
@@ -458,35 +450,6 @@ plot.igraph(
   edge.width = edge_width,
   edge.curved = edge_curved
 )
-
-if (color_by == "origin_class") {
-  if ("origin_class" %in% colnames(nodes_df_filtered)) {
-    node_cls <- nodes_df_filtered$origin_class[match(V(g)$name, nodes_df_filtered$id)]
-  } else if ("Class_CRBC" %in% colnames(nodes_df_filtered)) {
-    node_cls <- nodes_df_filtered$Class_CRBC[match(V(g)$name, nodes_df_filtered$id)]
-  } else if ("Class" %in% colnames(nodes_df_filtered)) {
-    node_cls <- nodes_df_filtered$Class[match(V(g)$name, nodes_df_filtered$id)]
-  } else {
-    node_cls <- rep("Unknown", vcount(g))
-  }
-  node_cls[is.na(node_cls)] <- "Unknown"
-  uniq_cls <- sort(unique(node_cls))
-
-  class_colors <- c(
-    "Actinomycetia" = "#98df8a",
-    "Alphaproteobacteria" = "#aec7e8",
-    "Bacilli" = "#ff7f0e",
-    "Thermoleophilia" = "#ff9896",
-    "Bacteroidia" = "#d62728",
-    "Gammaproteobacteria" = "#ffbb78",
-    "Deinococci" = "#1f77b4",
-    "Acidimicrobiia" = "#2ca02c",
-    "Campylobacteria" = "#9467bd",
-    "Unknown" = "#808080"
-  )
-  leg_cols <- ifelse(uniq_cls %in% names(class_colors), class_colors[uniq_cls], "#808080")
-
-}
 
 dev.off()
 

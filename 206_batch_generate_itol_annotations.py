@@ -30,6 +30,9 @@ import os
 import glob
 from pathlib import Path
 
+DEFAULT_INPUT_DIR = "Result/NCBI_4395_Batch/05_Tree/Genus_Level/Tree_annotation_file_prepare"
+DEFAULT_OUTPUT_DIR = "Result/NCBI_4395_Batch/05_Tree/Genus_Level/Tree_visualization"
+
 # Class color mapping
 CLASS_COLORS = {
     'Actinomycetia': '#98df8a',
@@ -332,13 +335,13 @@ def main():
     
     parser.add_argument(
         '-i', '--input_dir',
-        required=True,
+        default=DEFAULT_INPUT_DIR,
         help='Input directory containing genus_stats_merged_*.csv files'
     )
     
     parser.add_argument(
         '-o', '--output_dir',
-        required=True,
+        default=DEFAULT_OUTPUT_DIR,
         help='Output directory for annotation files'
     )
     
@@ -399,4 +402,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

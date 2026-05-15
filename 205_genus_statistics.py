@@ -18,7 +18,7 @@ Arguments:
     -h: Show this help message
 
 Example:
-    python 205_genus_statistics.py -g Result/NCBI_4395_Batch/05_Tree/Genus_Level/Genus_Name.csv -i Result/NCBI_4395_Batch/Contig_Sample_Mapping_Final_with_Provirus_Overlap_GTDB_corrected.csv -o genus_stats
+    python 205_genus_statistics.py
 """
 
 import pandas as pd
@@ -26,6 +26,10 @@ import argparse
 import numpy as np
 from collections import defaultdict, Counter
 from tqdm import tqdm
+
+DEFAULT_MASTER_TABLE = "Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv"
+DEFAULT_GENUS_FILE = "Result/NCBI_4395_Batch/05_Tree/Genus_Level/Genus_Name.csv"
+DEFAULT_OUTPUT_PREFIX = "Result/NCBI_4395_Batch/05_Tree/Genus_Level/Tree_annotation_file_prepare/genus_stats"
 
 
 def parse_defense_subtypes(subtype_str):
@@ -579,19 +583,19 @@ def main():
     
     parser.add_argument(
         '-g', '--genus',
-        required=True,
+        default=DEFAULT_GENUS_FILE,
         help='Input CSV file containing genus names (GTDB_Genus column)'
     )
     
     parser.add_argument(
         '-i', '--input',
-        required=True,
+        default=DEFAULT_MASTER_TABLE,
         help='Input CSV file with contig-level annotations'
     )
     
     parser.add_argument(
         '-o', '--output',
-        required=True,
+        default=DEFAULT_OUTPUT_PREFIX,
         help='Output file prefix for results'
     )
     
@@ -784,4 +788,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -26,6 +26,9 @@ import pandas as pd
 from matplotlib.patches import Circle
 from tqdm import tqdm
 
+DEFAULT_INPUT = "Result/NCBI_4395_Batch/07_Network/Contig_Sample_Mapping_Final_with_Provirus_Overlap_GTDB_corrected_with_Transferred.csv"
+DEFAULT_OUTPUT_DIR = "Result/NCBI_4395_Batch/07_Network/transferred_plasmid_gene_overlap"
+
 
 def parse_args() -> argparse.Namespace:
     """Step 1. Parse command-line arguments."""
@@ -43,13 +46,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "-i",
         "--input",
-        required=True,
+        default=DEFAULT_INPUT,
         help="Input CSV file path.",
     )
     parser.add_argument(
         "-o",
         "--output-dir",
-        required=True,
+        default=DEFAULT_OUTPUT_DIR,
         help="Output directory for statistics and Venn plots.",
     )
     parser.add_argument(
