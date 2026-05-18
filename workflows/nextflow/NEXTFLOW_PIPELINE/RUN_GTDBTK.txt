@@ -1,0 +1,67 @@
+================================================================================
+How to Run GTDB-Tk Batch Mode (CRITICAL: Must set Java memory first!)
+================================================================================
+
+IMPORTANT: The pipeline has 11,400+ tasks total. Without proper Java heap
+settings, Nextflow will crash with "RejectedExecutionException".
+
+================================================================================
+SOLUTION: Run these commands in order
+================================================================================
+
+Step 1: Set Java memory for Nextflow
+-------------------------------------
+export NXF_OPTS='-Xms4g -Xmx16g'
+
+Step 2: Run the pipeline
+-------------------------------------
+nextflow run main.nf --run_gtdbtk true -profile standard -resume
+
+================================================================================
+OR: Use the wrapper script (does both steps automatically)
+================================================================================
+
+./run_pipeline.sh
+
+================================================================================
+Why This is Needed
+================================================================================
+
+Your pipeline has:
+- 2,414 samples
+- ~11,400 total tasks (including PROKKA, PRODIGAL, etc.)
+- Each task needs metadata stored in Nextflow's Java heap
+
+Default Java heap: 1-2 GB (too small!)
+With our setting: 16 GB (sufficient for any pipeline size)
+
+Without this setting, Nextflow crashes around task #8,000-10,000 with:
+"ThreadPoolExecutor[Terminated]" error
+
+================================================================================
+Verification
+================================================================================
+
+After setting NXF_OPTS, verify it:
+```bash
+echo $NXF_OPTS
+# Should show: -Xms4g -Xmx16g
+```
+
+Then run the pipeline. You should see:
+```
+N E X T F L O W  ~  version 25.04.8
+...
+[INFO] GTDB-Tk classification enabled (batch mode: 50 genomes/batch)
+[xx/xxxxxx] Cached process > ASSEMBLY (sample_001)
+[xx/xxxxxx] Cached process > QUALITY_FILTER (sample_001)
+...
+[xx/xxxxxx] Submitted process > GTDBTK_SPLIT
+[xx/xxxxxx] Submitted process > GTDBTK_CLASSIFY_BATCH (batch-batch_001)
+...
+```
+
+No crashes, no "RejectedExecutionException"!
+
+================================================================================
+

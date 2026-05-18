@@ -25,6 +25,11 @@
 *.xlsx
 *.txt
 
+# Keep workflow examples and required workflow-side inputs versioned.
+!workflows/
+!workflows/nextflow/
+!workflows/nextflow/**
+
 # ============================================
 # Exclude data directories (including symlinks)
 # ============================================
