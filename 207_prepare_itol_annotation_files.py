@@ -12,7 +12,7 @@ This script processes genus_stats_merged_*.csv files with new columns and genera
 7. Class-based color annotation
 
 Usage:
-    python 206_batch_generate_itol_annotations.py -i <input_dir> -o <output_dir> [-h]
+    python 207_prepare_itol_annotation_files.py -i <input_dir> -o <output_dir> [-h]
 
 Arguments:
     -i: Input directory containing genus_stats_merged_*.csv files
@@ -20,7 +20,7 @@ Arguments:
     -h: Show this help message
 
 Example:
-    python 206_batch_generate_itol_annotations.py -i Result/NCBI_4395_Batch/05_Tree/Genus_Level/Tree_annotation_file_prepare -o Result/NCBI_4395_Batch/05_Tree/Genus_Level/Tree_visualization
+    python 207_prepare_itol_annotation_files.py -i Result/NCBI_4395_Batch/05_Tree/Genus_Level/Tree_annotation_file_prepare -o Result/NCBI_4395_Batch/05_Tree/Genus_Level/Tree_visualization
 """
 
 import pandas as pd
@@ -180,149 +180,143 @@ def process_file(input_file, output_dir):
         output_dir: Directory for output files
         
     Returns:
-        Tuple of (success, message, annotation_count)
+        Tuple of (message, annotation_count)
     """
     # Extract prefix from filename
     basename = os.path.basename(input_file)
     # Remove 'genus_stats_merged_' prefix and '.csv' suffix
     prefix = basename.replace('genus_stats_merged_', '').replace('.csv', '')
     
-    try:
-        # Load data
-        df = pd.read_csv(input_file)
-        
-        # Filter out specific genera
-        exclude_genera = ['Aliarcobacter', 'Saccharopolyspora', 'Ralstonia', 'Blastococcus']
-        df = df[~df['Genus'].isin(exclude_genera)]
-        
-        # Check if required columns exist
-        required_cols = ['Genus', 'Genus_Number', 'Mean_Plasmid_Percent', 'Class']
-        missing_cols = [col for col in required_cols if col not in df.columns]
-        
-        if missing_cols:
-            return False, f"Missing columns: {missing_cols}", 0
-        
-        annotation_count = 0
-        
-        # 1. Generate bar chart for Genus_Number
-        bar_genus_output = os.path.join(output_dir, f"{prefix}_genus_number_bar.txt")
-        generate_bar_chart(
-            df, 
-            'Genus_Number', 
-            bar_genus_output, 
-            'Genus Number',
-            color='#3498DB'  # Blue
+    df = pd.read_csv(input_file)
+    
+    # Filter out specific genera
+    exclude_genera = ['Aliarcobacter', 'Saccharopolyspora', 'Ralstonia', 'Blastococcus']
+    df = df[~df['Genus'].isin(exclude_genera)]
+    
+    # Check if required columns exist
+    required_cols = ['Genus', 'Genus_Number', 'Mean_Plasmid_Percent', 'Class']
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    
+    if missing_cols:
+        raise ValueError(f"Missing columns in {input_file}: {missing_cols}")
+    
+    annotation_count = 0
+    
+    # 1. Generate bar chart for Genus_Number
+    bar_genus_output = os.path.join(output_dir, f"{prefix}_genus_number_bar.txt")
+    generate_bar_chart(
+        df, 
+        'Genus_Number', 
+        bar_genus_output, 
+        'Genus Number',
+        color='#3498DB'  # Blue
+    )
+    annotation_count += 1
+    
+    # 2. Generate bar chart for Mean_Plasmid_Percent
+    bar_plasmid_output = os.path.join(output_dir, f"{prefix}_plasmid_percent_bar.txt")
+    generate_bar_chart(
+        df, 
+        'Mean_Plasmid_Percent', 
+        bar_plasmid_output, 
+        'Mean Plasmid Percent',
+        color='#2ECC71'  # Green
+    )
+    annotation_count += 1
+    
+    # 3. Generate Class color strip
+    class_output = os.path.join(output_dir, f"{prefix}_class_colors.txt")
+    generate_class_colors(df, class_output)
+    annotation_count += 1
+    
+    # 4. Generate heatmap for Defense types (Per_kb)
+    defense_cols = ['PD-T4-6_Per_kb', 'RM type II_Per_kb', 'SoFic_Per_kb', 
+                   'RM type I_Per_kb', 'RM type IV_Per_kb', 'Ceres_Per_kb',
+                   'AbiE_Per_kb', 'Wadjet type I_Per_kb', 'Gabija_Per_kb',
+                   'CRISPR-Cas type I_Per_kb', 'Zorya type III_Per_kb', 
+                   'Septu_Per_kb', 'Defense_Others_Per_kb']
+    # Filter columns that exist in dataframe
+    defense_cols_exist = [col for col in defense_cols if col in df.columns]
+    
+    if defense_cols_exist:
+        defense_output = os.path.join(output_dir, f"{prefix}_defense_per_kb_heatmap.txt")
+        generate_multi_column_heatmap(
+            df,
+            defense_cols_exist,
+            defense_output,
+            'Defense Systems (Per kb)',
+            colors='#E74C3C',  # Red
+            use_log=True
         )
         annotation_count += 1
-        
-        # 2. Generate bar chart for Mean_Plasmid_Percent
-        bar_plasmid_output = os.path.join(output_dir, f"{prefix}_plasmid_percent_bar.txt")
-        generate_bar_chart(
-            df, 
-            'Mean_Plasmid_Percent', 
-            bar_plasmid_output, 
-            'Mean Plasmid Percent',
-            color='#2ECC71'  # Green
+    
+    # 5. Generate heatmap for AntiDS types (Per_kb)
+    antids_cols = [col for col in df.columns if col.startswith('Anti_') and col.endswith('_Per_kb')]
+    
+    if antids_cols:
+        antids_output = os.path.join(output_dir, f"{prefix}_antids_per_kb_heatmap.txt")
+        generate_multi_column_heatmap(
+            df,
+            antids_cols,
+            antids_output,
+            'Anti-Defense Systems (Per kb)',
+            colors='#9B59B6',  # Purple
+            use_log=True
         )
         annotation_count += 1
-        
-        # 3. Generate Class color strip
-        class_output = os.path.join(output_dir, f"{prefix}_class_colors.txt")
-        generate_class_colors(df, class_output)
+    
+    # 6. Generate heatmap for detailed Antidefense types (Per_kb)
+    # Specific antidefense columns including NADP and Other
+    antidefense_detail_cols = [
+        'Anti_CBASS_Per_kb', 'Anti_CRISPR_Per_kb', 'Anti_Dnd_Per_kb',
+        'Anti_Gabija_Per_kb', 'Anti_Pycsar_Per_kb', 'Anti_RM_Per_kb',
+        'Anti_Thoeris_Per_kb', 'NADP_Per_kb', 'Other_Per_kb'
+    ]
+    # Filter columns that exist in dataframe
+    antidefense_detail_cols_exist = [col for col in antidefense_detail_cols if col in df.columns]
+    
+    if antidefense_detail_cols_exist:
+        antidefense_detail_output = os.path.join(output_dir, f"{prefix}_antidefense_detail_per_kb_heatmap.txt")
+        generate_multi_column_heatmap(
+            df,
+            antidefense_detail_cols_exist,
+            antidefense_detail_output,
+            'Antidefense Detail (Per kb)',
+            colors='#8E44AD',  # Dark purple
+            use_log=True
+        )
         annotation_count += 1
-        
-        # 4. Generate heatmap for Defense types (Per_kb)
-        defense_cols = ['PD-T4-6_Per_kb', 'RM type II_Per_kb', 'SoFic_Per_kb', 
-                       'RM type I_Per_kb', 'RM type IV_Per_kb', 'Ceres_Per_kb',
-                       'AbiE_Per_kb', 'Wadjet type I_Per_kb', 'Gabija_Per_kb',
-                       'CRISPR-Cas type I_Per_kb', 'Zorya type III_Per_kb', 
-                       'Septu_Per_kb', 'Defense_Others_Per_kb']
-        # Filter columns that exist in dataframe
-        defense_cols_exist = [col for col in defense_cols if col in df.columns]
-        
-        if defense_cols_exist:
-            defense_output = os.path.join(output_dir, f"{prefix}_defense_per_kb_heatmap.txt")
-            generate_multi_column_heatmap(
-                df,
-                defense_cols_exist,
-                defense_output,
-                'Defense Systems (Per kb)',
-                colors='#E74C3C',  # Red
-                use_log=True
-            )
-            annotation_count += 1
-        
-        # 5. Generate heatmap for AntiDS types (Per_kb)
-        antids_cols = [col for col in df.columns if col.startswith('Anti_') and col.endswith('_Per_kb')]
-        
-        if antids_cols:
-            antids_output = os.path.join(output_dir, f"{prefix}_antids_per_kb_heatmap.txt")
-            generate_multi_column_heatmap(
-                df,
-                antids_cols,
-                antids_output,
-                'Anti-Defense Systems (Per kb)',
-                colors='#9B59B6',  # Purple
-                use_log=True
-            )
-            annotation_count += 1
-        
-        # 6. Generate heatmap for detailed Antidefense types (Per_kb)
-        # Specific antidefense columns including NADP and Other
-        antidefense_detail_cols = [
-            'Anti_CBASS_Per_kb', 'Anti_CRISPR_Per_kb', 'Anti_Dnd_Per_kb',
-            'Anti_Gabija_Per_kb', 'Anti_Pycsar_Per_kb', 'Anti_RM_Per_kb',
-            'Anti_Thoeris_Per_kb', 'NADP_Per_kb', 'Other_Per_kb'
-        ]
-        # Filter columns that exist in dataframe
-        antidefense_detail_cols_exist = [col for col in antidefense_detail_cols if col in df.columns]
-        
-        if antidefense_detail_cols_exist:
-            antidefense_detail_output = os.path.join(output_dir, f"{prefix}_antidefense_detail_per_kb_heatmap.txt")
-            generate_multi_column_heatmap(
-                df,
-                antidefense_detail_cols_exist,
-                antidefense_detail_output,
-                'Antidefense Detail (Per kb)',
-                colors='#8E44AD',  # Dark purple
-                use_log=True
-            )
-            annotation_count += 1
-        
-        # 7. Generate heatmap for AMR types (Per_kb)
-        # Get only AMR-related columns (excluding Defense and Anti-Defense)
-        amr_per_kb_cols = []
-        for col in df.columns:
-            if col.endswith('_Per_kb'):
-                col_base = col.replace('_Per_kb', '')
-                # Check if it's an AMR column (contains common AMR gene names)
-                # Exclude Defense-related and Anti-Defense columns
-                if (any(amr_name in col_base for amr_name in ['bla', 'arr', 'ampC', 'cml', 'aac', 'erm', 
-                                                               'aph', 'vanR', 'catB', 'fosX', 'rox', 
-                                                               'cpt', 'vat', 'vanX', 'catA', 'tet', 
-                                                               'lsa', 'AMR_Others'])
-                    and not col.startswith('Anti_')
-                    and 'Defense' not in col
-                    and col not in defense_cols_exist):
-                    amr_per_kb_cols.append(col)
-        
-        if amr_per_kb_cols:
-            amr_output = os.path.join(output_dir, f"{prefix}_amr_per_kb_heatmap.txt")
-            generate_multi_column_heatmap(
-                df,
-                amr_per_kb_cols,
-                amr_output,
-                'AMR Genes (Per kb)',
-                colors='#F39C12',  # Orange
-                use_log=True
-            )
-            annotation_count += 1
-        
-        return True, f"Successfully processed {prefix} ({len(df)} genera, {annotation_count} annotations)", annotation_count
-        
-    except Exception as e:
-        import traceback
-        return False, f"Error processing {prefix}: {str(e)}\n{traceback.format_exc()}", 0
+    
+    # 7. Generate heatmap for AMR types (Per_kb)
+    # Get only AMR-related columns (excluding Defense and Anti-Defense)
+    amr_per_kb_cols = []
+    for col in df.columns:
+        if col.endswith('_Per_kb'):
+            col_base = col.replace('_Per_kb', '')
+            # Check if it's an AMR column (contains common AMR gene names)
+            # Exclude Defense-related and Anti-Defense columns
+            if (any(amr_name in col_base for amr_name in ['bla', 'arr', 'ampC', 'cml', 'aac', 'erm', 
+                                                           'aph', 'vanR', 'catB', 'fosX', 'rox', 
+                                                           'cpt', 'vat', 'vanX', 'catA', 'tet', 
+                                                           'lsa', 'AMR_Others'])
+                and not col.startswith('Anti_')
+                and 'Defense' not in col
+                and col not in defense_cols_exist):
+                amr_per_kb_cols.append(col)
+    
+    if amr_per_kb_cols:
+        amr_output = os.path.join(output_dir, f"{prefix}_amr_per_kb_heatmap.txt")
+        generate_multi_column_heatmap(
+            df,
+            amr_per_kb_cols,
+            amr_output,
+            'AMR Genes (Per kb)',
+            colors='#F39C12',  # Orange
+            use_log=True
+        )
+        annotation_count += 1
+    
+    return f"Successfully processed {prefix} ({len(df)} genera, {annotation_count} annotations)", annotation_count
 
 
 def main():
@@ -366,36 +360,19 @@ def main():
     print(f"Found {len(input_files)} files to process\n")
     
     # Process each file
-    success_count = 0
-    fail_count = 0
     total_annotations = 0
     
     for i, input_file in enumerate(input_files, 1):
         print(f"[{i}/{len(input_files)}] Processing {os.path.basename(input_file)}...")
-        success, message, annotation_count = process_file(input_file, args.output_dir)
-        
-        if success:
-            print(f"  ✓ {message}")
-            success_count += 1
-            total_annotations += annotation_count
-        else:
-            print(f"  ✗ {message}")
-            fail_count += 1
+        message, annotation_count = process_file(input_file, args.output_dir)
+        print(f"  {message}")
+        total_annotations += annotation_count
     
     print("\n" + "=" * 80)
     print("Batch Processing Complete")
     print("=" * 80)
     print(f"\nTotal files processed: {len(input_files)}")
-    print(f"  Successful: {success_count}")
-    print(f"  Failed: {fail_count}")
     print(f"\nTotal annotation files generated: {total_annotations}")
-    print(f"  - Genus Number bar charts: {success_count}")
-    print(f"  - Plasmid Percent bar charts: {success_count}")
-    print(f"  - Class color strips: {success_count}")
-    print(f"  - Defense Per kb heatmaps: {success_count}")
-    print(f"  - AntiDS Per kb heatmaps: {success_count}")
-    print(f"  - Antidefense Detail Per kb heatmaps: {success_count}")
-    print(f"  - AMR Per kb heatmaps: {success_count}")
     print("\nOutput location: " + args.output_dir)
     print("=" * 80)
 

@@ -9,7 +9,7 @@ import pandas as pd
 from tqdm import tqdm
 
 DEFAULT_RENAME_MAP = "Result/NCBI_4395_Batch/07_Network/coocc_network/mmseq_overall_contigs_cluster.rename_map.tsv"
-DEFAULT_MASTER_TABLE = "Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv"
+DEFAULT_MASTER_TABLE = "Collect/NCBI_4395_Batch/Master_Table/final/07_contig_annotation_master_table.csv"
 DEFAULT_OUTPUT = "Result/NCBI_4395_Batch/07_Network/coocc_network/mmseq_overall_contigs_cluster.rename_map.merged.tsv"
 
 
@@ -26,7 +26,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python 219_merge_cluster_with_mapping.py
+  python 221_merge_network_clusters_with_master_table.py
         """
     )
     parser.add_argument('-i', '--input', default=DEFAULT_RENAME_MAP,
@@ -53,7 +53,7 @@ Examples:
     
     # Step 4: Select required columns from mapping file
     required_cols = [
-        'Contig_ID', 'Sample_ID', 'Contig_Type', 'Defense_Subtype',
+        'Contig_ID', 'Sample_ID', 'GeNomad_Contig_Type', 'Defense_Subtype',
         'AntiDS_Type', 'AMR_Type', 'Host', 'Kingdom_CRBC', 'Phylum_CRBC',
         'Class_CRBC', 'Order_CRBC', 'Family_CRBC', 'Genus_CRBC',
         'Species_CRBC', 'Genus_CRBC_Updated', 'predicted_mobility'

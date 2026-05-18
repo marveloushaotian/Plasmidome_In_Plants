@@ -5,10 +5,10 @@ For each unique Host, get all unique Genus_CRBC_Updated values,
 then calculate the intersection (values that appear in all Host groups).
 
 Usage:
-    python 210_get_genus_intersection.py -i INPUT -o OUTPUT
+    python 211_calculate_genus_intersection.py -i INPUT -o OUTPUT
 
 Example:
-    python 210_get_genus_intersection.py -i Result/NCBI_4395_Batch/05_Tree/Genus_Level_Intersection/Sample_Genus_map.csv -o Result/NCBI_4395_Batch/05_Tree/Genus_Level_Intersection/Genus_CRBC_Updated_Intersection.csv
+    python 211_calculate_genus_intersection.py -i Result/NCBI_4395_Batch/05_Tree/Genus_Level_Intersection/Sample_Genus_map.csv -o Result/NCBI_4395_Batch/05_Tree/Genus_Level_Intersection/Genus_CRBC_Updated_Intersection.csv
 """
 
 import argparse
@@ -103,8 +103,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python 210_get_genus_intersection.py -i input.csv -o output.csv
-  python 210_get_genus_intersection.py --input data.csv --output intersection.csv
+  python 211_calculate_genus_intersection.py -i input.csv -o output.csv
+  python 211_calculate_genus_intersection.py --input data.csv --output intersection.csv
         """
     )
     parser.add_argument('-i', '--input', 

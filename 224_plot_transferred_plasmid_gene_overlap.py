@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Compare transferred vs non-transferred plasmid gene sets and draw Venn plots.
+Plot transferred vs non-transferred plasmid gene-set overlap.
 
 This script:
-1) Filters rows where Contig_Type3 == Plasmid.
+1) Filters rows where Locus_Mapped_Contig_Type == Plasmid.
 2) Splits plasmid rows into transferred and non-transferred groups.
 3) Extracts unique genes for Defense, AMR, and AntiDefense (comma/semicolon separated).
 4) Calculates intersections and set sizes.
 5) Saves summary tables and two-set Venn-style plots.
 
 Usage example:
-  python 223_compare_transferred_plasmid_gene_venn.py \
+  python 224_plot_transferred_plasmid_gene_overlap.py \
     -i Result/NCBI_4395_Batch/07_Network/Contig_Sample_Mapping_Final_with_Provirus_Overlap_GTDB_corrected_with_Transferred.csv \
     -o Result/NCBI_4395_Batch/07_Network/transferred_plasmid_gene_overlap
 """
@@ -33,11 +33,11 @@ DEFAULT_OUTPUT_DIR = "Result/NCBI_4395_Batch/07_Network/transferred_plasmid_gene
 def parse_args() -> argparse.Namespace:
     """Step 1. Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Compare gene set overlap between transferred and non-transferred plasmids.",
+        description="Plot gene-set overlap between transferred and non-transferred plasmids.",
         formatter_class=argparse.RawTextHelpFormatter,
         epilog=(
             "Example:\n"
-            "  python 223_compare_transferred_plasmid_gene_venn.py \\\n"
+            "  python 224_plot_transferred_plasmid_gene_overlap.py \\\n"
             "    -i Result/NCBI_4395_Batch/07_Network/"
             "Contig_Sample_Mapping_Final_with_Provirus_Overlap_GTDB_corrected_with_Transferred.csv \\\n"
             "    -o Result/NCBI_4395_Batch/07_Network/transferred_plasmid_gene_overlap"
@@ -57,8 +57,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--contig-col",
-        default="Contig_Type3",
-        help="Contig type column name (default: Contig_Type3).",
+        default="Locus_Mapped_Contig_Type",
+        help="Contig type column name (default: Locus_Mapped_Contig_Type).",
     )
     parser.add_argument(
         "--contig-value",

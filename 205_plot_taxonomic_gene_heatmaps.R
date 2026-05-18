@@ -4,12 +4,12 @@
 # Taxonomy Heatmap Generator
 # Description:
 #   Generate heatmaps of gene subtype distributions by selected taxonomy levels,
-#   split by Contig_Type3 and faceted by Host.
+#   split by Locus_Mapped_Contig_Type and faceted by Host.
 # Usage:
-#   Rscript 204_taxonomy_heatmap.R -i <input.csv> -o <output_dir> [-g <top_genes>] [--taxonomy-levels <levels>] [--top-kingdom <n>] [--top-phylum <n>] [--top-class <n>] [--top-order <n>] [--top-family <n>] [--top-genus-updated <n>] [--top-species <n>] [-w <width>] [-e <height>]
+#   Rscript 205_plot_taxonomic_gene_heatmaps.R -i <input.csv> -o <output_dir> [-g <top_genes>] [--taxonomy-levels <levels>] [--top-kingdom <n>] [--top-phylum <n>] [--top-class <n>] [--top-order <n>] [--top-family <n>] [--top-genus-updated <n>] [--top-species <n>] [-w <width>] [-e <height>]
 # Example:
-#   Rscript 204_taxonomy_heatmap.R -i Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv -o Result/NCBI_4395_Batch/04_Gene_Taxonomy -g 50 --taxonomy-levels Kingdom_CRBC,Phylum_CRBC,Genus_CRBC_Updated --top-kingdom 20 --top-phylum 50 -w 15 -e 30
-#   Rscript 204_taxonomy_heatmap.R -i Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv -o Result/NCBI_4395_Batch/04_Gene_Taxonomy/ -g 20 --taxonomy-levels Class_CRBC -w 12 -e 8
+#   Rscript 205_plot_taxonomic_gene_heatmaps.R -i Collect/NCBI_4395_Batch/Master_Table/final/07_contig_annotation_master_table.csv -o Result/NCBI_4395_Batch/04_Gene_Taxonomy -g 50 --taxonomy-levels Kingdom_CRBC,Phylum_CRBC,Genus_CRBC_Updated --top-kingdom 20 --top-phylum 50 -w 15 -e 30
+#   Rscript 205_plot_taxonomic_gene_heatmaps.R -i Collect/NCBI_4395_Batch/Master_Table/final/07_contig_annotation_master_table.csv -o Result/NCBI_4395_Batch/04_Gene_Taxonomy/ -g 20 --taxonomy-levels Class_CRBC -w 12 -e 8
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -31,7 +31,7 @@ taxonomy_levels_all <- c(
   "Genus_CRBC_Updated",
   "Species_CRBC"
 )
-contig_type3_order <- c("Chromosome", "Plasmid", "Virus")
+locus_type_order <- c("Chromosome", "Plasmid", "Virus")
 
 # Step 1: Helper functions
 parse_level_list <- function(levels_arg, available_levels) {
@@ -67,9 +67,9 @@ normalize_top_n <- function(value, arg_name) {
 }
 
 # Step 1: Parse command line arguments
-parser <- ArgumentParser(description = "Generate taxonomy heatmaps by Contig_Type3 and Host")
+parser <- ArgumentParser(description = "Generate taxonomy heatmaps by Locus_Mapped_Contig_Type and Host")
 parser$add_argument(
-  "-i", "--input", default = "Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv",
+  "-i", "--input", default = "Collect/NCBI_4395_Batch/Master_Table/final/07_contig_annotation_master_table.csv",
   help = "Input CSV file path"
 )
 parser$add_argument(
@@ -78,7 +78,7 @@ parser$add_argument(
 )
 parser$add_argument(
   "-g", "--top-genes", type = "integer", default = 50,
-  help = "Top N genes to keep per Contig_Type3 (default: 50)"
+  help = "Top N genes to keep per Locus_Mapped_Contig_Type (default: 50)"
 )
 parser$add_argument(
   "--taxonomy-levels", default = paste(taxonomy_levels_all, collapse = ","),
@@ -160,27 +160,27 @@ defense_exclude_list <- c("VSPR", "dXTPase", "HEC-01", "HEC-09", "PifA")
 
 # Step 4: Read and normalize input table
 data <- read.csv(args$input, stringsAsFactors = FALSE, check.names = FALSE)
-if (!("Contig_Type3" %in% names(data))) {
-  stop("Missing required column: Contig_Type3")
+if (!("Locus_Mapped_Contig_Type" %in% names(data))) {
+  stop("Missing required column: Locus_Mapped_Contig_Type")
 }
 data <- data %>%
-  mutate(Contig_Type3 = if_else(Contig_Type3 %in% c("Virus", "Provirus"), "Virus", Contig_Type3))
+  mutate(Locus_Mapped_Contig_Type = if_else(Locus_Mapped_Contig_Type %in% c("Virus", "Provirus"), "Virus", Locus_Mapped_Contig_Type))
 
-unexpected_contig_type3 <- setdiff(unique(data$Contig_Type3), c(contig_type3_order, "", NA))
-if (length(unexpected_contig_type3) > 0) {
+unexpected_locus_types <- setdiff(unique(data$Locus_Mapped_Contig_Type), c(locus_type_order, "", NA))
+if (length(unexpected_locus_types) > 0) {
   warning(sprintf(
-    "Unexpected Contig_Type3 values found and removed: %s",
-    paste(unexpected_contig_type3, collapse = ", ")
+    "Unexpected Locus_Mapped_Contig_Type values found and removed: %s",
+    paste(unexpected_locus_types, collapse = ", ")
   ))
 }
 
 data <- data %>%
-  filter(Contig_Type3 %in% contig_type3_order) %>%
-  mutate(Contig_Type3 = factor(Contig_Type3, levels = contig_type3_order))
+  filter(Locus_Mapped_Contig_Type %in% locus_type_order) %>%
+  mutate(Locus_Mapped_Contig_Type = factor(Locus_Mapped_Contig_Type, levels = locus_type_order))
 
 # Step 5: Validate required columns
 required_gene_cols <- c("Defense_Subtype", "AntiDS_Type", "AMR_Type")
-required_cols <- unique(c("Host", "Contig_Type3", required_gene_cols, selected_taxonomy_levels))
+required_cols <- unique(c("Host", "Locus_Mapped_Contig_Type", required_gene_cols, selected_taxonomy_levels))
 missing_cols <- setdiff(required_cols, names(data))
 if (length(missing_cols) > 0) {
   stop(sprintf(
@@ -189,10 +189,10 @@ if (length(missing_cols) > 0) {
   ))
 }
 
-# Step 6: Count genes by Host + Contig_Type3 + taxonomy
+# Step 6: Count genes by Host + Locus_Mapped_Contig_Type + taxonomy
 count_by_taxonomy <- function(df, gene_col, taxonomy_col, defense_filter = FALSE) {
   gene_df <- df %>%
-    select(Host, Contig_Type3, taxonomy = all_of(taxonomy_col), all_of(gene_col)) %>%
+    select(Host, Locus_Mapped_Contig_Type, taxonomy = all_of(taxonomy_col), all_of(gene_col)) %>%
     filter(!is.na(.data[[gene_col]]), .data[[gene_col]] != "") %>%
     mutate(gene = strsplit(.data[[gene_col]], ",")) %>%
     unnest(gene) %>%
@@ -206,7 +206,7 @@ count_by_taxonomy <- function(df, gene_col, taxonomy_col, defense_filter = FALSE
   }
 
   gene_df %>%
-    count(Host, Contig_Type3, taxonomy, gene, name = "count")
+    count(Host, Locus_Mapped_Contig_Type, taxonomy, gene, name = "count")
 }
 
 # Step 7: Check whether a gene column should use defense filters
@@ -214,7 +214,7 @@ is_defense_like <- function(gene_col) {
   gene_col == "Defense_Subtype"
 }
 
-# Step 8: Draw heatmaps per Contig_Type3 and taxonomy level
+# Step 8: Draw heatmaps per Locus_Mapped_Contig_Type and taxonomy level
 create_heatmaps_by_contigtype <- function(df, gene_col, gene_name, taxonomy_col, top_genes, top_taxonomy, output_dir, fig_width, fig_height) {
   cat(sprintf("Processing %s with taxonomy %s...\n", gene_name, taxonomy_col))
   gene_counts <- count_by_taxonomy(
@@ -223,14 +223,14 @@ create_heatmaps_by_contigtype <- function(df, gene_col, gene_name, taxonomy_col,
     taxonomy_col = taxonomy_col,
     defense_filter = is_defense_like(gene_col)
   )
-  contig_types <- intersect(contig_type3_order, as.character(unique(gene_counts$Contig_Type3)))
+  contig_types <- intersect(locus_type_order, as.character(unique(gene_counts$Locus_Mapped_Contig_Type)))
 
   for (contig_type in contig_types) {
-    cat(sprintf("  Plotting for Contig_Type3: %s, taxonomy: %s\n", contig_type, taxonomy_col))
-    subdata <- gene_counts %>% filter(Contig_Type3 == contig_type)
+    cat(sprintf("  Plotting for Locus_Mapped_Contig_Type: %s, taxonomy: %s\n", contig_type, taxonomy_col))
+    subdata <- gene_counts %>% filter(Locus_Mapped_Contig_Type == contig_type)
 
     if (nrow(subdata) == 0) {
-      cat(sprintf("    No data for Contig_Type3 %s, skipping...\n", contig_type))
+      cat(sprintf("    No data for Locus_Mapped_Contig_Type %s, skipping...\n", contig_type))
       next
     }
 
@@ -308,7 +308,7 @@ create_heatmaps_by_contigtype <- function(df, gene_col, gene_name, taxonomy_col,
       ) +
       labs(
         title = sprintf(
-          "%s Top%d by %s (%s, Contig_Type3: %s)",
+          "%s Top%d by %s (%s, Locus_Mapped_Contig_Type: %s)",
           gene_name, top_genes, taxonomy_col, taxonomy_label, contig_type
         ),
         x = taxonomy_col,

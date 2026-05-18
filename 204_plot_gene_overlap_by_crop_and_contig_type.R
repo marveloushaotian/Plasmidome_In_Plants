@@ -1,15 +1,5 @@
 #!/usr/bin/env Rscript
 
-# 0) Ensure required packages are available
-install_if_missing <- function(pkg) {
-  if (!requireNamespace(pkg, quietly = TRUE)) {
-    install.packages(pkg, repos = "https://cloud.r-project.org")
-  }
-}
-
-required_pkgs <- c("argparse", "data.table", "dplyr", "tidyr", "ggplot2", "ggVennDiagram", "UpSetR")
-invisible(lapply(required_pkgs, install_if_missing))
-
 suppressPackageStartupMessages({
   library(argparse)
   library(data.table)
@@ -25,13 +15,13 @@ parser <- ArgumentParser(
   description = "Create Venn diagrams and combination statistics for Chromosome/Plasmid/Virus by crop group."
 )
 parser$add_argument("-i", "--input",
-                    default = "Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv",
+                    default = "Collect/NCBI_4395_Batch/Master_Table/final/07_contig_annotation_master_table.csv",
                     help = "Input CSV file path")
 parser$add_argument("-o", "--output",
                     default = "Result/NCBI_4395_Batch/03_Gene_Diversity",
                     help = "Output directory path")
 parser$add_argument("--crop_col", default = "Host", help = "Crop grouping column name")
-parser$add_argument("--contig_col", default = "Contig_Type3", help = "Contig type column name")
+parser$add_argument("--contig_col", default = "Locus_Mapped_Contig_Type", help = "Contig type column name")
 parser$add_argument(
   "--analysis_type",
   default = "defense",

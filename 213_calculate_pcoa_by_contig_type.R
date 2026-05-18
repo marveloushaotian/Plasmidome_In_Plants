@@ -5,7 +5,7 @@
 # Description: Calculate PCoA coordinates from gene type profiles
 #              Supports: Defense, AMR, AntiDefense
 #              Save coordinates and metadata for later plotting
-# Usage: Rscript 213_step1_pcoa_split_calculate.R -i <input.csv> -t <type> -o <output_prefix> [-g <group_column>] [-c]
+# Usage: Rscript 213_calculate_pcoa_by_contig_type.R -i <input.csv> -t <type> -o <output_prefix> [-g <group_column>] [-c]
 #
 # Arguments:
 #   -i: Input CSV file (expanded gene type file)
@@ -76,7 +76,7 @@ type_config <- list(
 
 config <- type_config[[args$type]]
 
-# Load whitelist columns from reference script (same format as 213_step1_pcoa_chro_plas.R)
+# Load whitelist columns from reference script (same format as 215_calculate_pcoa_chromosome_plasmid_overlay.R)
 load_allowed_cols_from_reference <- function(type_key, reference_file) {
   if (!file.exists(reference_file)) {
     return(NULL)
@@ -147,7 +147,7 @@ for (dir_path in dirs_to_create) {
 
 # Get numeric gene type columns
 all_cols <- colnames(df)
-reference_whitelist <- file.path(getwd(), "213_step1_pcoa_chro_plas.R")
+reference_whitelist <- file.path(getwd(), "215_calculate_pcoa_chromosome_plasmid_overlay.R")
 allowed_cols <- load_allowed_cols_from_reference(config$key, reference_whitelist)
 
 if (!is.null(allowed_cols) && length(allowed_cols) > 0) {
@@ -175,7 +175,7 @@ cat(sprintf("Numeric %s columns retained: %d\n", config$name, length(existing_ge
 
 # Filter for Plasmid and Chromosome only
 df_filtered <- df %>%
-  filter(Contig_Type3 %in% c("Plasmid", "Chromosome"))
+  filter(Locus_Mapped_Contig_Type %in% c("Plasmid", "Chromosome"))
 
 cat(sprintf("Total rows after filtering: %d\n\n", nrow(df_filtered)))
 
@@ -196,7 +196,7 @@ if (!is.null(args$group)) {
 
 # Function to create gene matrix aggregated by Sample_ID
 create_gene_matrix_by_sample <- function(data, contig_type, gene_cols) {
-  data_sub <- data %>% filter(Contig_Type3 == contig_type)
+  data_sub <- data %>% filter(Locus_Mapped_Contig_Type == contig_type)
   
   if (nrow(data_sub) == 0) return(NULL)
   
@@ -355,7 +355,7 @@ run_pcoa_calculation <- function(data, contig_type, output_prefix, gene_cols, ma
     cat("Using count numbers for distance calculation (Bray-Curtis distance)...\n")
     gene_matrix_for_dist <- gene_matrix_clean
     dist_matrix <- vegdist(gene_matrix_for_dist, method = "bray")
-    # Also create binary version for saving (for compatibility with step2)
+    # Save a binary matrix for the plotting/envfit step.
     gene_matrix_binary <- (gene_matrix_clean > 0) * 1
   } else {
     cat("Converting to presence/absence for Jaccard distance...\n")
@@ -569,8 +569,7 @@ run_pcoa_calculation <- function(data, contig_type, output_prefix, gene_cols, ma
   write.csv(var_df, var_file, row.names = FALSE)
   cat(sprintf("Variance explained saved to: %s\n", var_file))
   
-  # Save gene matrix (binary) for envfit in step2
-  # Note: Always save binary version for compatibility with step2 plotting script
+  # Save gene matrix (binary) for envfit in the plotting step.
   matrix_file <- file.path(matrix_subdir, sprintf("%s_%s_%s.csv", output_prefix, contig_type, matrix_suffix))
   gene_df <- as.data.frame(gene_matrix_binary)
   gene_df$Sample_ID <- rownames(gene_matrix_binary)
@@ -658,4 +657,4 @@ cat("  - 01_coordinates/  (coordinate files)\n")
 cat("  - 02_variance/     (variance files)\n")
 cat("  - 03_matrix/       (matrix files)\n")
 cat("  - 04_permanova/    (PERMANOVA test results)\n")
-cat(sprintf("\nRun 214_step2_pcoa_split_plot.R to create customized plots.\n"))
+cat(sprintf("\nRun 214_plot_pcoa_by_contig_type.R to create customized plots.\n"))

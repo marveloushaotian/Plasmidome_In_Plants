@@ -13,7 +13,7 @@ import argparse
 import pandas as pd
 from tqdm import tqdm
 
-DEFAULT_INPUT = "Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv"
+DEFAULT_INPUT = "Collect/NCBI_4395_Batch/Master_Table/final/07_contig_annotation_master_table.csv"
 DEFAULT_OUTPUT = "Result/NCBI_4395_Batch/05_Tree/Genus_Level/First_Sample_Per_Species.csv"
 DEFAULT_SPECIES_COLUMN = "Species_CRBC"
 

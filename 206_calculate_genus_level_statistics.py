@@ -9,7 +9,7 @@ This script processes contig-level data to generate genus-level statistics for:
 4. Top 20 AMR types
 
 Usage:
-    python 205_genus_statistics.py -g <genus_file> -i <input_file> -o <output_prefix> [-h]
+    python 206_calculate_genus_level_statistics.py -g <genus_file> -i <input_file> -o <output_prefix> [-h]
 
 Arguments:
     -g: Input CSV file containing genus names (GTDB_Genus column)
@@ -18,7 +18,7 @@ Arguments:
     -h: Show this help message
 
 Example:
-    python 205_genus_statistics.py
+    python 206_calculate_genus_level_statistics.py
 """
 
 import pandas as pd
@@ -27,7 +27,7 @@ import numpy as np
 from collections import defaultdict, Counter
 from tqdm import tqdm
 
-DEFAULT_MASTER_TABLE = "Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv"
+DEFAULT_MASTER_TABLE = "Collect/NCBI_4395_Batch/Master_Table/final/07_contig_annotation_master_table.csv"
 DEFAULT_GENUS_FILE = "Result/NCBI_4395_Batch/05_Tree/Genus_Level/Genus_Name.csv"
 DEFAULT_OUTPUT_PREFIX = "Result/NCBI_4395_Batch/05_Tree/Genus_Level/Tree_annotation_file_prepare/genus_stats"
 
@@ -72,7 +72,7 @@ def should_exclude_defense(defense_name):
     return False
 
 
-def determine_contig_type(row):
+def determine_analysis_contig_type(row):
     """
     Determine the final contig type considering Provirus_Overlap.
     
@@ -82,18 +82,18 @@ def determine_contig_type(row):
     Returns:
         String indicating contig type (Chromosome, Plasmid, or Virus)
     """
-    contig_type3 = row['Contig_Type3']
+    locus_mapped_type = row['Locus_Mapped_Contig_Type']
     provirus_overlap = row['Provirus_Overlap']
     
     # Default type
-    final_type = contig_type3
+    final_type = locus_mapped_type
     
     # Check for Defense_on_Provirus or AMR_on_Provirus
     if pd.notna(provirus_overlap) and provirus_overlap != '':
         overlap_items = [s.strip() for s in str(provirus_overlap).split(',')]
         
         # If Defense_on_Provirus or AMR_on_Provirus exists and original type is Chromosome
-        if contig_type3 == 'Chromosome':
+        if locus_mapped_type == 'Chromosome':
             if 'Defense_on_Provirus' in overlap_items or 'AMR_on_Provirus' in overlap_items:
                 final_type = 'Virus'
     
@@ -185,20 +185,20 @@ def count_genus_numbers_and_plasmid_percent(df, genus_list):
     Count number of unique Sample_IDs per genus (by Host only) and calculate mean plasmid_percent.
     Also calculate total length (in kb) per genus/host/contig_type based on unique samples.
     
-    Note: Genus_Number is now calculated based on unique Sample_IDs per Host, not per Contig_Type.
-    This means each Host has a fixed Genus_Number regardless of Contig_Type.
+    Note: Genus_Number is now calculated based on unique Sample_IDs per Host, not per Analysis_Contig_Type.
+    This means each Host has a fixed Genus_Number regardless of Analysis_Contig_Type.
     
     Args:
         df: Input DataFrame
         genus_list: List of genus names to analyze (in order)
         
     Returns:
-        Dictionary with (Host, Contig_Type) as keys and DataFrames as values
+        Dictionary with (Host, Analysis_Contig_Type) as keys and DataFrames as values
     """
     print("Step 1: Counting genus numbers (unique Sample_IDs per Host) and calculating total lengths...")
     
     # Add final contig type column
-    df['Final_Contig_Type'] = df.apply(determine_contig_type, axis=1)
+    df['Analysis_Contig_Type'] = df.apply(determine_analysis_contig_type, axis=1)
     
     # Filter for target genera
     df_filtered = df[df['Genus_CRBC_Updated'].isin(genus_list)].copy()
@@ -209,7 +209,7 @@ def count_genus_numbers_and_plasmid_percent(df, genus_list):
     global_taxonomy.columns = ['Genus', 'Kingdom', 'Phylum', 'Class', 'Order', 'Family']
     global_taxonomy_dict = global_taxonomy.set_index('Genus').to_dict('index')
     
-    # Calculate mean plasmid percent by sample (per Host only, not by Contig_Type)
+    # Calculate mean plasmid percent by sample (per Host only, not by Analysis_Contig_Type)
     plasmid_percent_dict = calculate_mean_plasmid_percent_by_sample(df, genus_list)
     
     # NEW: Calculate Genus_Number based on unique Sample_IDs per Host
@@ -234,7 +234,7 @@ def count_genus_numbers_and_plasmid_percent(df, genus_list):
     print("  Calculating total lengths per genus/host/contig_type...")
     length_dict = {}
     
-    for (host, contig_type), group in df_filtered.groupby(['Host', 'Final_Contig_Type']):
+    for (host, contig_type), group in df_filtered.groupby(['Host', 'Analysis_Contig_Type']):
         genus_lengths = []
         
         for genus in genus_list:
@@ -269,14 +269,14 @@ def count_genus_numbers_and_plasmid_percent(df, genus_list):
         
         length_dict[(host, contig_type)] = pd.DataFrame(genus_lengths)
     
-    # Get all unique Host and Final_Contig_Type combinations
-    contig_type_combinations = df_filtered[['Host', 'Final_Contig_Type']].drop_duplicates()
+    # Get all unique Host and Analysis_Contig_Type combinations
+    contig_type_combinations = df_filtered[['Host', 'Analysis_Contig_Type']].drop_duplicates()
     
-    # Split by Host and Contig_Type
+    # Split by Host and Analysis_Contig_Type
     result_dict = {}
     for _, row in contig_type_combinations.iterrows():
         host = row['Host']
-        contig_type = row['Final_Contig_Type']
+        contig_type = row['Analysis_Contig_Type']
         
         # Get Genus_Number for this host (same for all contig types)
         if host in genus_number_dict:
@@ -339,11 +339,11 @@ def count_genus_numbers_and_plasmid_percent(df, genus_list):
 
 def count_defense_subtypes(df, genus_list, top_n=12):
     """
-    Count defense subtypes per genus grouped by Host and final Contig_Type.
+    Count defense subtypes per genus grouped by Host and final Analysis_Contig_Type.
     Top N defenses are counted individually, rest are combined as 'Defense_Others'.
     
     Args:
-        df: Input DataFrame with Final_Contig_Type column
+        df: Input DataFrame with Analysis_Contig_Type column
         genus_list: List of genus names to analyze (in order)
         top_n: Number of top defenses to include
         
@@ -373,7 +373,7 @@ def count_defense_subtypes(df, genus_list, top_n=12):
     # Count defenses per genus/host/type
     results = []
     
-    grouped = df_filtered.groupby(['Host', 'Final_Contig_Type', 'Genus_CRBC_Updated'])
+    grouped = df_filtered.groupby(['Host', 'Analysis_Contig_Type', 'Genus_CRBC_Updated'])
     
     for (host, contig_type, genus), group in tqdm(grouped, desc="Counting by genus"):
         defense_counts = Counter()
@@ -391,7 +391,7 @@ def count_defense_subtypes(df, genus_list, top_n=12):
         # Create result row
         result_row = {
             'Host': host,
-            'Contig_Type': contig_type,
+            'Analysis_Contig_Type': contig_type,
             'Genus': genus
         }
         for defense in top_defenses:
@@ -402,10 +402,10 @@ def count_defense_subtypes(df, genus_list, top_n=12):
     
     df_results = pd.DataFrame(results)
     
-    # Split by Host and Contig_Type
+    # Split by Host and Analysis_Contig_Type
     result_dict = {}
     defense_cols_with_others = top_defenses + ['Defense_Others']
-    for (host, contig_type), group in df_results.groupby(['Host', 'Contig_Type']):
+    for (host, contig_type), group in df_results.groupby(['Host', 'Analysis_Contig_Type']):
         # Keep only Genus and defense columns
         cols_to_keep = ['Genus'] + defense_cols_with_others
         group_data = group[cols_to_keep]
@@ -418,10 +418,10 @@ def count_defense_subtypes(df, genus_list, top_n=12):
 
 def count_antids_types(df, genus_list):
     """
-    Count anti-defense system types per genus grouped by Host and final Contig_Type.
+    Count anti-defense system types per genus grouped by Host and final Analysis_Contig_Type.
     
     Args:
-        df: Input DataFrame with Final_Contig_Type column
+        df: Input DataFrame with Analysis_Contig_Type column
         genus_list: List of genus names to analyze (in order)
         
     Returns:
@@ -444,7 +444,7 @@ def count_antids_types(df, genus_list):
     # Count AntiDS per genus/host/type
     results = []
     
-    grouped = df_filtered.groupby(['Host', 'Final_Contig_Type', 'Genus_CRBC_Updated'])
+    grouped = df_filtered.groupby(['Host', 'Analysis_Contig_Type', 'Genus_CRBC_Updated'])
     
     for (host, contig_type, genus), group in tqdm(grouped, desc="Counting AntiDS by genus"):
         antids_counts = Counter()
@@ -458,7 +458,7 @@ def count_antids_types(df, genus_list):
         # Create result row
         result_row = {
             'Host': host,
-            'Contig_Type': contig_type,
+            'Analysis_Contig_Type': contig_type,
             'Genus': genus
         }
         for antids in unique_antids:
@@ -468,9 +468,9 @@ def count_antids_types(df, genus_list):
     
     df_results = pd.DataFrame(results)
     
-    # Split by Host and Contig_Type
+    # Split by Host and Analysis_Contig_Type
     result_dict = {}
-    for (host, contig_type), group in df_results.groupby(['Host', 'Contig_Type']):
+    for (host, contig_type), group in df_results.groupby(['Host', 'Analysis_Contig_Type']):
         # Keep only Genus and AntiDS columns
         cols_to_keep = ['Genus'] + unique_antids
         group_data = group[cols_to_keep]
@@ -483,12 +483,12 @@ def count_antids_types(df, genus_list):
 
 def count_amr_types(df, genus_list, top_n=12):
     """
-    Count AMR types per genus grouped by Host and final Contig_Type.
+    Count AMR types per genus grouped by Host and final Analysis_Contig_Type.
     Top N AMR types are counted individually, rest are combined as 'AMR_Others'.
     Considers AMR_on_Provirus for Virus classification.
     
     Args:
-        df: Input DataFrame with Final_Contig_Type column
+        df: Input DataFrame with Analysis_Contig_Type column
         genus_list: List of genus names to analyze (in order)
         top_n: Number of top AMR types to include
         
@@ -500,21 +500,21 @@ def count_amr_types(df, genus_list, top_n=12):
     # Filter for target genera
     df_filtered = df[df['Genus_CRBC_Updated'].isin(genus_list)].copy()
     
-    # For AMR, we need to recalculate Final_Contig_Type considering only AMR_on_Provirus
+    # For AMR, we need to recalculate Analysis_Contig_Type considering only AMR_on_Provirus
     def determine_amr_contig_type(row):
-        contig_type3 = row['Contig_Type3']
+        locus_mapped_type = row['Locus_Mapped_Contig_Type']
         provirus_overlap = row['Provirus_Overlap']
         
-        final_type = contig_type3
+        final_type = locus_mapped_type
         
         if pd.notna(provirus_overlap) and provirus_overlap != '':
             overlap_items = [s.strip() for s in str(provirus_overlap).split(',')]
-            if contig_type3 == 'Chromosome' and 'AMR_on_Provirus' in overlap_items:
+            if locus_mapped_type == 'Chromosome' and 'AMR_on_Provirus' in overlap_items:
                 final_type = 'Virus'
         
         return final_type
     
-    df_filtered['AMR_Contig_Type'] = df_filtered.apply(determine_amr_contig_type, axis=1)
+    df_filtered['AMR_Analysis_Contig_Type'] = df_filtered.apply(determine_amr_contig_type, axis=1)
     
     # Count all AMR types to find top N
     all_amr = []
@@ -530,7 +530,7 @@ def count_amr_types(df, genus_list, top_n=12):
     # Count AMR per genus/host/type
     results = []
     
-    grouped = df_filtered.groupby(['Host', 'AMR_Contig_Type', 'Genus_CRBC_Updated'])
+    grouped = df_filtered.groupby(['Host', 'AMR_Analysis_Contig_Type', 'Genus_CRBC_Updated'])
     
     for (host, contig_type, genus), group in tqdm(grouped, desc="Counting AMR by genus"):
         amr_counts = Counter()
@@ -548,7 +548,7 @@ def count_amr_types(df, genus_list, top_n=12):
         # Create result row
         result_row = {
             'Host': host,
-            'Contig_Type': contig_type,
+            'Analysis_Contig_Type': contig_type,
             'Genus': genus
         }
         for amr in top_amr:
@@ -559,10 +559,10 @@ def count_amr_types(df, genus_list, top_n=12):
     
     df_results = pd.DataFrame(results)
     
-    # Split by Host and Contig_Type
+    # Split by Host and Analysis_Contig_Type
     result_dict = {}
     amr_cols_with_others = top_amr + ['AMR_Others']
-    for (host, contig_type), group in df_results.groupby(['Host', 'Contig_Type']):
+    for (host, contig_type), group in df_results.groupby(['Host', 'Analysis_Contig_Type']):
         # Keep only Genus and AMR columns
         cols_to_keep = ['Genus'] + amr_cols_with_others
         group_data = group[cols_to_keep]
@@ -661,7 +661,7 @@ def main():
     print("\n" + "=" * 80)
     print("Step 7: Merging all statistics and calculating derived metrics...")
     
-    # Get all unique (Host, Contig_Type) combinations
+    # Get all unique (Host, Analysis_Contig_Type) combinations
     all_groups = set()
     all_groups.update(genus_counts_dict.keys())
     all_groups.update(defense_counts_dict.keys())

@@ -4,10 +4,10 @@ Extract rows from bac120_metadata_r207.tsv where genus name matches those in Gen
 Filter for gtdb_representative='t' and keep only the first occurrence of each genus.
 
 Usage:
-    python 207_extract_matching_taxonomy.py -t METADATA_TSV -g GENUS_CSV -o OUTPUT
+    python 208_extract_taxonomy_matched_samples.py -t METADATA_TSV -g GENUS_CSV -o OUTPUT
 
 Example:
-    python 207_extract_matching_taxonomy.py -t Result/NCBI_4395_Batch/05_Tree/Genus_Level/bac120_metadata_r207.tsv -g Result/NCBI_4395_Batch/05_Tree/Genus_Level/Genus_Name.csv -o Result/NCBI_4395_Batch/05_Tree/Genus_Level/filtered_metadata.tsv
+    python 208_extract_taxonomy_matched_samples.py -t Result/NCBI_4395_Batch/05_Tree/Genus_Level/bac120_metadata_r207.tsv -g Result/NCBI_4395_Batch/05_Tree/Genus_Level/Genus_Name.csv -o Result/NCBI_4395_Batch/05_Tree/Genus_Level/filtered_metadata.tsv
 """
 
 import argparse
@@ -84,16 +84,11 @@ def main():
     with open(args.taxonomy, 'r') as f_in, open(args.output, 'w') as f_out:
         header = f_in.readline()
         f_out.write(header)  # Write header
-        header_written = True
         
         # Find column indices
         header_parts = header.strip().split('\t')
-        try:
-            rep_idx = header_parts.index('gtdb_representative')
-            tax_idx = header_parts.index('gtdb_taxonomy')
-        except ValueError as e:
-            print(f"Error: Required column not found - {e}")
-            return
+        rep_idx = header_parts.index('gtdb_representative')
+        tax_idx = header_parts.index('gtdb_taxonomy')
         
         for line in tqdm(f_in, total=total_lines-1, desc="Processing"):
             # Split line by tab to get columns

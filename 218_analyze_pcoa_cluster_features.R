@@ -4,7 +4,7 @@
 # Analyze PCoA Clusters - Identify What Drives Cluster Formation
 # Description: This script investigates what factors drive the clustering 
 #              pattern in PCoA when neither Class_CRBC nor Host explain it.
-# Usage: Rscript 216_analyze_pcoa_clusters.R -c <coords.csv> -m <matrix.csv> -d <workdir> -k <k_value> -o <output_prefix>
+# Usage: Rscript 218_analyze_pcoa_cluster_features.R -c <coords.csv> -m <matrix.csv> -d <workdir> -k <k_value> -o <output_prefix>
 # =============================================================================
 
 DEFAULT_COORDS <- "Result/NCBI_4395_Batch/06_Cluter/amr_merge/01_coordinates/PCoA_AMR_Chromosome_coordinates.csv"

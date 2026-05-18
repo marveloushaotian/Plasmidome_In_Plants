@@ -6,12 +6,8 @@ import os
 import re
 from itertools import combinations
 
+import networkx as nx
 import pandas as pd
-
-try:
-    import networkx as nx
-except ImportError:
-    nx = None
 
 GENOME_RE = re.compile(r"^(CRBC_G\d+)")
 
@@ -19,10 +15,9 @@ GENOME_RE = re.compile(r"^(CRBC_G\d+)")
 def extract_genome_id(contig_id: str) -> str:
     s = str(contig_id).strip()
     m = GENOME_RE.match(s)
-    if m:
-        return m.group(1)
-    # fallback: split on first '_' if needed
-    return s.split("_")[0]
+    if not m:
+        raise ValueError(f"Cannot extract CRBC genome ID from contig ID: {contig_id}")
+    return m.group(1)
 
 
 def load_cluster_map(path: str) -> pd.DataFrame:
@@ -122,10 +117,6 @@ def build_edges(cluster_df: pd.DataFrame, mode="star",
 
 
 def write_graphml(nodes_df, edges_df, out_graphml, node_cols):
-    if nx is None:
-        print("⚠️ networkx not installed; skipping GraphML.")
-        return
-
     G = nx.Graph()
 
     # add nodes with attributes
@@ -175,7 +166,7 @@ def main():
                     default="Result/NCBI_4395_Batch/07_Network/transfer_network/linkage_contig_network",
                     help="Output prefix (folder + basename).")
     ap.add_argument("--graphml", action="store_true",
-                    help="Also write GraphML (requires networkx).")
+                    help="Also write GraphML.")
     args = ap.parse_args()
 
     outdir = os.path.dirname(args.out_prefix)

@@ -11,8 +11,11 @@ Workflow:
 5) From matched rows, extract "original" after the first "|" and deduplicate.
 6) Save the final unique extracted list.
 
+Use --rename-map-only to run only step 5 on a rename_map.tsv file. This
+replaces the former standalone original-ID extraction helper.
+
 Usage example:
-  python 222_extract_transfer_nodes_match_rename_map.py \
+  python 223_prepare_transfer_node_rename_mapping.py \
     -e Result/NCBI_4395_Batch/07_Network/transfer_network/Medicago_linkage_contig_edges.tsv \
        Result/NCBI_4395_Batch/07_Network/transfer_network/Oryza_linkage_contig_edges.tsv \
        Result/NCBI_4395_Batch/07_Network/transfer_network/Triticum_linkage_contig_edges.tsv \
@@ -86,6 +89,11 @@ def parse_args() -> argparse.Namespace:
         default="mmseq_overall_contigs_cluster.original_after_first_pipe.unique.from_matched.tsv",
         help="Output filename for final deduplicated extracted list.",
     )
+    parser.add_argument(
+        "--rename-map-only",
+        action="store_true",
+        help="Only extract original values after the first pipe from --rename-map.",
+    )
     return parser.parse_args()
 
 
@@ -118,6 +126,32 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    rename_df = pd.read_csv(args.rename_map, sep="\t", dtype=str)
+    required_map_cols = {"original", "new"}
+    missing_map_cols = required_map_cols - set(rename_df.columns)
+    if missing_map_cols:
+        raise ValueError(
+            f"Missing columns in rename map: {', '.join(sorted(missing_map_cols))}"
+        )
+
+    if args.rename_map_only:
+        extracted_raw = []
+        for value in tqdm(rename_df["original"], desc="Extracting original-after-first-pipe", unit="row"):
+            extracted = extract_after_first_pipe(value)
+            if extracted:
+                extracted_raw.append(extracted)
+
+        extracted_unique = stable_unique(extracted_raw)
+        final_list_path = output_dir / args.final_list_name
+        pd.DataFrame({"extracted_after_first_pipe": extracted_unique}).to_csv(
+            final_list_path, sep="\t", index=False
+        )
+
+        print(f"Input rename map rows: {len(rename_df)}")
+        print(f"Final unique extracted list size: {len(extracted_unique)}")
+        print(f"Saved: {final_list_path}")
+        return
+
     merged_values: List[str] = []
 
     # Step 5. Read all edge files and collect source + target.
@@ -141,14 +175,6 @@ def main() -> None:
     pd.DataFrame({"contig_id": unique_values}).to_csv(unique_path, sep="\t", index=False)
 
     # Step 8. Match unique IDs with rename_map new column and save matched rows.
-    rename_df = pd.read_csv(args.rename_map, sep="\t", dtype=str)
-    required_map_cols = {"original", "new"}
-    missing_map_cols = required_map_cols - set(rename_df.columns)
-    if missing_map_cols:
-        raise ValueError(
-            f"Missing columns in rename map: {', '.join(sorted(missing_map_cols))}"
-        )
-
     unique_set = set(unique_values)
     matched_df = rename_df[rename_df["new"].astype(str).isin(unique_set)].copy()
     matched_path = output_dir / args.matched_name

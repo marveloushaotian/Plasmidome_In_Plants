@@ -4,10 +4,10 @@ Filter Sample_Genus_map.csv based on Genus_CRBC_Updated values in intersection f
 Extract rows from Sample_Genus_map.csv where Genus_CRBC_Updated matches values in intersection file.
 
 Usage:
-    python 209_filter_sample_genus_map.py -i INTERSECTION -s SAMPLE_MAP -o OUTPUT
+    python 210_filter_sample_genus_mapping.py -i INTERSECTION -s SAMPLE_MAP -o OUTPUT
 
 Example:
-    python 209_filter_sample_genus_map.py -i Result/NCBI_4395_Batch/05_Tree/Genus_Level_Intersection/Genus_CRBC_Updated_Intersection.csv -s Result/NCBI_4395_Batch/05_Tree/Genus_Level_Intersection/Sample_Genus_map.csv -o Result/NCBI_4395_Batch/05_Tree/Genus_Level_Intersection/Sample_Genus_map_Intersection.csv
+    python 210_filter_sample_genus_mapping.py -i Result/NCBI_4395_Batch/05_Tree/Genus_Level_Intersection/Genus_CRBC_Updated_Intersection.csv -s Result/NCBI_4395_Batch/05_Tree/Genus_Level_Intersection/Sample_Genus_map.csv -o Result/NCBI_4395_Batch/05_Tree/Genus_Level_Intersection/Sample_Genus_map_Intersection.csv
 """
 
 import argparse
@@ -72,8 +72,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python 209_filter_sample_genus_map.py -i intersection.csv -s sample_genus_map.csv -o filtered_output.csv
-  python 209_filter_sample_genus_map.py --intersection intersection.csv --sample-map sample_genus_map.csv --output filtered_output.csv
+  python 210_filter_sample_genus_mapping.py -i intersection.csv -s sample_genus_map.csv -o filtered_output.csv
+  python 210_filter_sample_genus_mapping.py --intersection intersection.csv --sample-map sample_genus_map.csv --output filtered_output.csv
         """
     )
     parser.add_argument('-i', '--intersection', 

@@ -5,12 +5,12 @@
 # Description:
 #   - From expanded gene type profiles, compute PCoA for ONE gene type
 #     (Defense, AMR, or AntiDefense) per run.
-#   - Rows in the PCoA matrix are "Sample_ID × Contig_Type3" combinations.
+#   - Rows in the PCoA matrix are "Sample_ID × Locus_Mapped_Contig_Type" combinations.
 #   - Output per-gene-type PCoA coordinates and variance explained for use
 #     by step-2 plotting with chromosome and plasmid in the same panel.
 #
 # Usage:
-#   Rscript 213_step1_pcoa_chro_plas.R \
+#   Rscript 215_calculate_pcoa_chromosome_plasmid_overlay.R \
 #       -i <input.csv> \
 #       -t <type> \
 #       -o <output_prefix> \
@@ -118,20 +118,20 @@ for (dir_path in list(coord_dir, var_dir)) {
   }
 }
 
-if (!"Contig_Type3" %in% colnames(df)) {
-  stop("Column 'Contig_Type3' not found in input file.")
+if (!"Locus_Mapped_Contig_Type" %in% colnames(df)) {
+  stop("Column 'Locus_Mapped_Contig_Type' not found in input file.")
 }
 
 df_filtered <- df %>%
-  filter(Contig_Type3 %in% c("Plasmid", "Chromosome"))
+  filter(Locus_Mapped_Contig_Type %in% c("Plasmid", "Chromosome"))
 
-cat(sprintf("Total rows after filtering Contig_Type3 (Plasmid/Chromosome): %d\n\n", nrow(df_filtered)))
+cat(sprintf("Total rows after filtering Locus_Mapped_Contig_Type (Plasmid/Chromosome): %d\n\n", nrow(df_filtered)))
 
 # ------------------------- 4. Helper: build matrix -------------------------- #
 
 create_sample_contig_matrix <- function(data, gene_cols) {
   agg_data <- data %>%
-    group_by(Sample_ID, Contig_Type3) %>%
+    group_by(Sample_ID, Locus_Mapped_Contig_Type) %>%
     summarise(
       across(all_of(gene_cols), \(x) sum(x, na.rm = TRUE)),
       Host = first(Host),
@@ -147,13 +147,13 @@ create_sample_contig_matrix <- function(data, gene_cols) {
   }
 
   gene_mat <- as.matrix(agg_data[, gene_cols, drop = FALSE])
-  rownames(gene_mat) <- paste(agg_data$Sample_ID, agg_data$Contig_Type3, sep = "|")
+  rownames(gene_mat) <- paste(agg_data$Sample_ID, agg_data$Locus_Mapped_Contig_Type, sep = "|")
 
   meta <- agg_data %>%
     transmute(
-      Row_ID = paste(Sample_ID, Contig_Type3, sep = "|"),
+      Row_ID = paste(Sample_ID, Locus_Mapped_Contig_Type, sep = "|"),
       Sample_ID = Sample_ID,
-      Contig_Type3 = Contig_Type3,
+      Locus_Mapped_Contig_Type = Locus_Mapped_Contig_Type,
       Host = Host,
       Class_CRBC = Class_CRBC,
       Order_CRBC = Order_CRBC,
@@ -198,7 +198,7 @@ if (length(gene_filtered) < 2) {
 
 mat_res <- create_sample_contig_matrix(df_filtered, gene_filtered)
 if (is.null(mat_res)) {
-  stop("No data after aggregation by Sample_ID and Contig_Type3.")
+  stop("No data after aggregation by Sample_ID and Locus_Mapped_Contig_Type.")
 }
 
 gene_mat <- mat_res$matrix
@@ -280,4 +280,4 @@ cat(sprintf(
 cat("\nOutput directories:\n")
 cat(sprintf("  Coordinates: %s\n", coord_dir))
 cat(sprintf("  Variance   : %s\n", var_dir))
-cat("\nYou can now run '214_step2_pcoa_chro_plas.R' for this gene type (and repeat for the others).\n")
+cat("\nYou can now run '216_plot_pcoa_chromosome_plasmid_overlay.R' for this gene type (and repeat for the others).\n")

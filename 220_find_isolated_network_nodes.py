@@ -80,13 +80,13 @@ def main():
         epilog="""
 Examples:
   # For coocc_network
-  python 218_find_isolated_nodes.py -d Result/NCBI_4395_Batch/07_Network/coocc_network/Annotation -n cluster -o Result/NCBI_4395_Batch/07_Network/coocc_network/isolated_nodes
+  python 220_find_isolated_network_nodes.py -d Result/NCBI_4395_Batch/07_Network/coocc_network/Annotation -n cluster -o Result/NCBI_4395_Batch/07_Network/coocc_network/isolated_nodes
   
   # For transfer_network
-  python 218_find_isolated_nodes.py -d Result/NCBI_4395_Batch/07_Network/transfer_network/Annotation -n contig -o Result/NCBI_4395_Batch/07_Network/transfer_network/isolated_nodes
+  python 220_find_isolated_network_nodes.py -d Result/NCBI_4395_Batch/07_Network/transfer_network/Annotation -n contig -o Result/NCBI_4395_Batch/07_Network/transfer_network/isolated_nodes
   
   # For isolate_network
-  python 218_find_isolated_nodes.py -d Result/NCBI_4395_Batch/07_Network/isolate_network -n GenomeID_standard -o Result/NCBI_4395_Batch/07_Network/isolate_network/isolated_nodes
+  python 220_find_isolated_network_nodes.py -d Result/NCBI_4395_Batch/07_Network/isolate_network -n GenomeID_standard -o Result/NCBI_4395_Batch/07_Network/isolate_network/isolated_nodes
         """
     )
     parser.add_argument('-d', '--directory', default=DEFAULT_DIRECTORY,
@@ -117,49 +117,27 @@ Examples:
         # Find corresponding edges file
         edges_file = nodes_file.parent / nodes_file.name.replace('_nodes.tsv', '_edges.tsv')
         
-        if not edges_file.exists():
-            print(f"  Warning: Edges file not found for {nodes_file.name}, skipping...")
-            continue
-        
         print(f"\nProcessing: {nodes_file.name}")
         
         # Find isolated nodes
         output_file = output_dir / nodes_file.name.replace('_nodes.tsv', '_isolated_nodes.tsv')
-        try:
-            # Try to auto-detect node ID column for this file
-            df_test = pd.read_csv(nodes_file, sep='\t', nrows=1)
-            possible_cols = ['id', 'cluster', 'contig', 'node', 'GenomeID_standard']
-            node_id_col = args.node_id_col
-            if node_id_col is None:
-                for col in possible_cols:
-                    if col in df_test.columns:
-                        node_id_col = col
-                        break
-            
-            if node_id_col is None:
-                print(f"  Error: Could not auto-detect node ID column in {nodes_file.name}")
-                continue
-            
-            df_isolated, isolated_count, total_count = find_isolated_nodes(
-                nodes_file, edges_file, node_id_col, output_file
-            )
-            
-            percentage = (isolated_count / total_count * 100) if total_count > 0 else 0
-            results.append({
-                'File': nodes_file.name,
-                'Total_Nodes': total_count,
-                'Isolated_Nodes': isolated_count,
-                'Connected_Nodes': total_count - isolated_count,
-                'Percentage_Isolated': f"{percentage:.2f}%"
-            })
-            
-            print(f"  Total nodes: {total_count}")
-            print(f"  Isolated nodes: {isolated_count} ({percentage:.2f}%)")
-            print(f"  Connected nodes: {total_count - isolated_count}")
-            print(f"  Saved to: {output_file}")
-            
-        except Exception as e:
-            print(f"  Error processing {nodes_file.name}: {e}")
+        df_isolated, isolated_count, total_count = find_isolated_nodes(
+            nodes_file, edges_file, args.node_id_col, output_file
+        )
+        
+        percentage = (isolated_count / total_count * 100) if total_count > 0 else 0
+        results.append({
+            'File': nodes_file.name,
+            'Total_Nodes': total_count,
+            'Isolated_Nodes': isolated_count,
+            'Connected_Nodes': total_count - isolated_count,
+            'Percentage_Isolated': f"{percentage:.2f}%"
+        })
+        
+        print(f"  Total nodes: {total_count}")
+        print(f"  Isolated nodes: {isolated_count} ({percentage:.2f}%)")
+        print(f"  Connected nodes: {total_count - isolated_count}")
+        print(f"  Saved to: {output_file}")
     
     # Print summary
     print("\n" + "="*80)

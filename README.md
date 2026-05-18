@@ -47,7 +47,7 @@ For explaining the workflow structure, `NEXTFLOW` is the clearest baseline examp
 
 ## Downstream Analysis Scripts
 
-After the Nextflow workflow generates annotation tables and intermediate result files, the master table is assembled with [`101_build_master_table.py`](101_build_master_table.py). The canonical input and output files for this table are kept under [`Collect/NCBI_4395_Batch/Master_Table`](Collect/NCBI_4395_Batch/Master_Table), with the frequently used final table at [`Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv`](Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv).
+After the Nextflow workflow generates annotation tables and intermediate result files, the master table is assembled with [`101_build_master_table.py`](101_build_master_table.py). The canonical input and output files for this table are kept under [`Collect/NCBI_4395_Batch/Master_Table`](Collect/NCBI_4395_Batch/Master_Table), with the frequently used final table at [`Collect/NCBI_4395_Batch/Master_Table/final/07_contig_annotation_master_table.csv`](Collect/NCBI_4395_Batch/Master_Table/final/07_contig_annotation_master_table.csv).
 
 The numbered Python and R scripts in the repository root are then used for downstream analysis.
 
@@ -75,10 +75,11 @@ The repository is organized around the full project workflow rather than a singl
 ### Root-level analysis scripts
 
 - `001_*.sh`: data download and raw input preparation
-- [`101_build_master_table.py`](101_build_master_table.py): canonical master table builder from the four normalized input files to the final `05_master_contig_annotation_table.csv`
+- [`101_build_master_table.py`](101_build_master_table.py): canonical master table builder from the normalized input files to the final `07_contig_annotation_master_table.csv`
 - [`102_extract_first_sample_per_species.py`](102_extract_first_sample_per_species.py): helper extraction script retained from the early table-analysis layer
-- `201_*.R` onward: statistical analysis, comparative summaries, ordination, visualization, and figure generation
-- `217_*.py` onward plus `226_*.R` to `232_*.R`: graph and network annotation, network construction, and network plotting
+- `201_*.R` to `224_*.py`: master-table downstream statistics, tree/iTOL preparation, PCoA analysis, and network table preparation
+- `225_*.R` to `232_*.R`: network table cleanup and network plotting
+- [`SCRIPT_WORKFLOW.md`](SCRIPT_WORKFLOW.md): script inventory, naming logic, and remaining merge candidates
 
 ### Project-linked directories
 

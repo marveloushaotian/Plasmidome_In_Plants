@@ -6,17 +6,17 @@ This script extracts rows where Genus_CRBC_Updated matches genera in Genus_Name.
 and outputs only Sample_ID and Genus_CRBC_Updated columns.
 
 Usage:
-    python 208_filter_genus_samples.py -i INPUT -g GENUS -o OUTPUT
+    python 209_filter_samples_by_genus.py -i INPUT -g GENUS -o OUTPUT
 
 Example:
-    python 208_filter_genus_samples.py
+    python 209_filter_samples_by_genus.py
 """
 
 import pandas as pd
 import argparse
 from tqdm import tqdm
 
-DEFAULT_MASTER_TABLE = "Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv"
+DEFAULT_MASTER_TABLE = "Collect/NCBI_4395_Batch/Master_Table/final/07_contig_annotation_master_table.csv"
 DEFAULT_GENUS_FILE = "Result/NCBI_4395_Batch/05_Tree/Genus_Level/Genus_Name.csv"
 DEFAULT_OUTPUT_FILE = "Result/NCBI_4395_Batch/05_Tree/Genus_Level/Filtered_Sample_Genus.csv"
 

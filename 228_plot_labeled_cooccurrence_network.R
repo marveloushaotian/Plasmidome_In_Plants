@@ -36,7 +36,7 @@ layout_method <- "igraph"   # qgraph or igraph
 niter <- 1000
 start_temp_factor <- 2.5
 
-show_labels <- FALSE        # legacy toggle: label uses vertex names
+show_labels <- FALSE
 title_text <- NULL
 
 color_by <- "origin_class"  # origin_class or community

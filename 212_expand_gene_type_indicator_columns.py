@@ -6,7 +6,7 @@ Supports: AMR_Type, Defense_Subtype, AntiDS_Type
 Each unique gene type becomes a separate column with count values.
 
 Usage:
-    python 212_expand_gene_types.py -i <input.csv> -o <output.csv> -t <type>
+    python 212_expand_gene_type_indicator_columns.py -i <input.csv> -o <output.csv> -t <type>
 
 Arguments:
     -i: Input CSV file path
@@ -14,9 +14,9 @@ Arguments:
     -t: Gene type to expand: 'amr', 'defense', or 'antidefense'
 
 Example:
-    python 212_expand_gene_types.py -t amr
-    python 212_expand_gene_types.py -t defense
-    python 212_expand_gene_types.py -t antidefense
+    python 212_expand_gene_type_indicator_columns.py -t amr
+    python 212_expand_gene_type_indicator_columns.py -t defense
+    python 212_expand_gene_type_indicator_columns.py -t antidefense
 """
 
 import argparse
@@ -24,7 +24,7 @@ import pandas as pd
 from collections import Counter
 from tqdm import tqdm
 
-DEFAULT_MASTER_TABLE = "Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv"
+DEFAULT_MASTER_TABLE = "Collect/NCBI_4395_Batch/Master_Table/final/07_contig_annotation_master_table.csv"
 DEFAULT_OUTPUTS = {
     "amr": "Result/NCBI_4395_Batch/06_Cluter/Contig_Sample_Mapping_Expanded_AMR.csv",
     "defense": "Result/NCBI_4395_Batch/06_Cluter/Contig_Sample_Mapping_Expanded_Defense.csv",

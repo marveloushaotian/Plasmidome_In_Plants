@@ -5,7 +5,7 @@
 # Description: Calculate and visualize richness (number of unique types) for
 #              Defense_Type, AntiDS_Type, and AMR_Type per sample
 #              Generates boxplots and summary statistics
-# Usage: Rscript 203_calculate_defense_richness.R [-i <input.csv>] [-o <output_dir>]
+# Usage: Rscript 203_calculate_gene_richness_by_sample.R [-i <input.csv>] [-o <output_dir>]
 #
 # Arguments:
 #   -i: Input CSV file path
@@ -23,7 +23,7 @@ suppressPackageStartupMessages({
 # Parse command line arguments
 parser <- ArgumentParser(description = "Calculate defense system richness (alpha diversity)")
 parser$add_argument("-i", "--input",
-                    default = "Collect/NCBI_4395_Batch/Master_Table/final/05_master_contig_annotation_table.csv",
+                    default = "Collect/NCBI_4395_Batch/Master_Table/final/07_contig_annotation_master_table.csv",
                     help = "Input CSV file path")
 parser$add_argument("-o", "--output",
                     default = "Result/NCBI_4395_Batch/03_Gene_Diversity/Alpha_Diversity",
@@ -63,7 +63,7 @@ count_unique_types <- function(values) {
 cat("Calculating Defense_Type richness...\n")
 defense_richness <- data %>%
   filter(!is.na(Defense_Type) & Defense_Type != "") %>%
-  group_by(Sample_ID, Host, Contig_Type3) %>%
+  group_by(Sample_ID, Host, Locus_Mapped_Contig_Type) %>%
   summarise(
     Defense_Richness = count_unique_types(Defense_Type),
     .groups = "drop"
@@ -73,7 +73,7 @@ defense_richness <- data %>%
 cat("Calculating AntiDS_Type richness...\n")
 antids_richness <- data %>%
   filter(!is.na(AntiDS_Type) & AntiDS_Type != "") %>%
-  group_by(Sample_ID, Host, Contig_Type3) %>%
+  group_by(Sample_ID, Host, Locus_Mapped_Contig_Type) %>%
   summarise(
     AntiDS_Richness = count_unique_types(AntiDS_Type),
     .groups = "drop"
@@ -83,7 +83,7 @@ antids_richness <- data %>%
 cat("Calculating AMR_Type richness...\n")
 amr_richness <- data %>%
   filter(!is.na(AMR_Type) & AMR_Type != "") %>%
-  group_by(Sample_ID, Host, Contig_Type3) %>%
+  group_by(Sample_ID, Host, Locus_Mapped_Contig_Type) %>%
   summarise(
     AMR_Richness = count_unique_types(AMR_Type),
     .groups = "drop"
@@ -92,13 +92,13 @@ amr_richness <- data %>%
 # Step 8: Merge all richness data
 cat("Merging richness data...\n")
 all_samples <- data %>%
-  select(Sample_ID, Host, Contig_Type3) %>%
+  select(Sample_ID, Host, Locus_Mapped_Contig_Type) %>%
   distinct()
 
 richness_data <- all_samples %>%
-  left_join(defense_richness, by = c("Sample_ID", "Host", "Contig_Type3")) %>%
-  left_join(antids_richness, by = c("Sample_ID", "Host", "Contig_Type3")) %>%
-  left_join(amr_richness, by = c("Sample_ID", "Host", "Contig_Type3")) %>%
+  left_join(defense_richness, by = c("Sample_ID", "Host", "Locus_Mapped_Contig_Type")) %>%
+  left_join(antids_richness, by = c("Sample_ID", "Host", "Locus_Mapped_Contig_Type")) %>%
+  left_join(amr_richness, by = c("Sample_ID", "Host", "Locus_Mapped_Contig_Type")) %>%
   mutate(
     Defense_Richness = ifelse(is.na(Defense_Richness), 0, Defense_Richness),
     AntiDS_Richness = ifelse(is.na(AntiDS_Richness), 0, AntiDS_Richness),
@@ -121,9 +121,9 @@ richness_long <- richness_data %>%
     Type = gsub("_Richness", "", Type)
   )
 
-# Step 11: Plot Defense_Type richness by Host and Contig_Type3
+# Step 11: Plot Defense_Type richness by Host and Locus_Mapped_Contig_Type
 cat("Generating Defense_Type richness boxplot...\n")
-p1 <- ggplot(richness_data, aes(x = Contig_Type3, y = Defense_Richness, fill = Host)) +
+p1 <- ggplot(richness_data, aes(x = Locus_Mapped_Contig_Type, y = Defense_Richness, fill = Host)) +
   geom_boxplot(outlier.size = 0.5) +
   facet_wrap(~Host, scales = "free_x", ncol = 2) +
   theme_bw() +
@@ -140,13 +140,13 @@ p1 <- ggplot(richness_data, aes(x = Contig_Type3, y = Defense_Richness, fill = H
     y = "Defense System Richness"
   )
 
-pdf_file <- file.path(args$output, "Defense_Richness_by_Host_ContigType3.pdf")
+pdf_file <- file.path(args$output, "Defense_Richness_by_Host_LocusMappedContigType.pdf")
 ggsave(pdf_file, p1, width = 12, height = 10)
 cat(sprintf("Saved plot to %s\n", pdf_file))
 
-# Step 12: Plot AntiDS_Type richness by Host and Contig_Type3
+# Step 12: Plot AntiDS_Type richness by Host and Locus_Mapped_Contig_Type
 cat("Generating AntiDS_Type richness boxplot...\n")
-p2 <- ggplot(richness_data, aes(x = Contig_Type3, y = AntiDS_Richness, fill = Host)) +
+p2 <- ggplot(richness_data, aes(x = Locus_Mapped_Contig_Type, y = AntiDS_Richness, fill = Host)) +
   geom_boxplot(outlier.size = 0.5) +
   facet_wrap(~Host, scales = "free_x", ncol = 2) +
   theme_bw() +
@@ -163,13 +163,13 @@ p2 <- ggplot(richness_data, aes(x = Contig_Type3, y = AntiDS_Richness, fill = Ho
     y = "Anti-Defense System Richness"
   )
 
-pdf_file <- file.path(args$output, "AntiDS_Richness_by_Host_ContigType3.pdf")
+pdf_file <- file.path(args$output, "AntiDS_Richness_by_Host_LocusMappedContigType.pdf")
 ggsave(pdf_file, p2, width = 12, height = 10)
 cat(sprintf("Saved plot to %s\n", pdf_file))
 
-# Step 13: Plot AMR_Type richness by Host and Contig_Type3
+# Step 13: Plot AMR_Type richness by Host and Locus_Mapped_Contig_Type
 cat("Generating AMR_Type richness boxplot...\n")
-p3 <- ggplot(richness_data, aes(x = Contig_Type3, y = AMR_Richness, fill = Host)) +
+p3 <- ggplot(richness_data, aes(x = Locus_Mapped_Contig_Type, y = AMR_Richness, fill = Host)) +
   geom_boxplot(outlier.size = 0.5) +
   facet_wrap(~Host, scales = "free_x", ncol = 2) +
   theme_bw() +
@@ -186,13 +186,13 @@ p3 <- ggplot(richness_data, aes(x = Contig_Type3, y = AMR_Richness, fill = Host)
     y = "AMR Type Richness"
   )
 
-pdf_file <- file.path(args$output, "AMR_Richness_by_Host_ContigType3.pdf")
+pdf_file <- file.path(args$output, "AMR_Richness_by_Host_LocusMappedContigType.pdf")
 ggsave(pdf_file, p3, width = 12, height = 10)
 cat(sprintf("Saved plot to %s\n", pdf_file))
 
 # Step 14: Create combined plot for all three types
 cat("Generating combined richness boxplot...\n")
-p4 <- ggplot(richness_long, aes(x = Contig_Type3, y = Richness, fill = Type)) +
+p4 <- ggplot(richness_long, aes(x = Locus_Mapped_Contig_Type, y = Richness, fill = Type)) +
   geom_boxplot(outlier.size = 0.5) +
   facet_grid(Type ~ Host, scales = "free") +
   theme_bw() +
@@ -211,14 +211,14 @@ p4 <- ggplot(richness_long, aes(x = Contig_Type3, y = Richness, fill = Type)) +
     fill = "System Type"
   )
 
-pdf_file <- file.path(args$output, "Combined_Richness_by_Host_ContigType3.pdf")
+pdf_file <- file.path(args$output, "Combined_Richness_by_Host_LocusMappedContigType.pdf")
 ggsave(pdf_file, p4, width = 14, height = 12)
 cat(sprintf("Saved plot to %s\n", pdf_file))
 
 # Step 15: Generate summary statistics
 cat("Generating summary statistics...\n")
 summary_stats <- richness_data %>%
-  group_by(Host, Contig_Type3) %>%
+  group_by(Host, Locus_Mapped_Contig_Type) %>%
   summarise(
     n_samples = n(),
     Defense_mean = mean(Defense_Richness, na.rm = TRUE),
@@ -243,9 +243,9 @@ cat("========================================\n")
 cat(sprintf("\nOutput directory: %s\n", args$output))
 cat(sprintf("Output files:\n"))
 cat(sprintf("  - defense_richness_by_sample.csv\n"))
-cat(sprintf("  - Defense_Richness_by_Host_ContigType3.pdf\n"))
-cat(sprintf("  - AntiDS_Richness_by_Host_ContigType3.pdf\n"))
-cat(sprintf("  - AMR_Richness_by_Host_ContigType3.pdf\n"))
-cat(sprintf("  - Combined_Richness_by_Host_ContigType3.pdf\n"))
+cat(sprintf("  - Defense_Richness_by_Host_LocusMappedContigType.pdf\n"))
+cat(sprintf("  - AntiDS_Richness_by_Host_LocusMappedContigType.pdf\n"))
+cat(sprintf("  - AMR_Richness_by_Host_LocusMappedContigType.pdf\n"))
+cat(sprintf("  - Combined_Richness_by_Host_LocusMappedContigType.pdf\n"))
 cat(sprintf("  - richness_summary_statistics.csv\n"))
 cat("\n")

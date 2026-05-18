@@ -36,13 +36,13 @@ def main():
         epilog="""
 Examples:
   # For coocc_network (using cluster column)
-  python 217_annotate_nodes.py -m Result/NCBI_4395_Batch/07_Network/coocc_network/mmseq_overall_contigs_cluster.rename_map.merged.tsv -d Result/NCBI_4395_Batch/07_Network/coocc_network -o Result/NCBI_4395_Batch/07_Network/coocc_network/Annotation -k cluster
+  python 219_annotate_network_nodes.py -m Result/NCBI_4395_Batch/07_Network/coocc_network/mmseq_overall_contigs_cluster.rename_map.merged.tsv -d Result/NCBI_4395_Batch/07_Network/coocc_network -o Result/NCBI_4395_Batch/07_Network/coocc_network/Annotation -k cluster
   
   # For transfer_network (using contig column)
-  python 217_annotate_nodes.py -m Result/NCBI_4395_Batch/07_Network/transfer_network/mmseq_overall_contigs_cluster.rename_map.merged.tsv -d Result/NCBI_4395_Batch/07_Network/transfer_network -o Result/NCBI_4395_Batch/07_Network/transfer_network/Annotation -k contig
+  python 219_annotate_network_nodes.py -m Result/NCBI_4395_Batch/07_Network/transfer_network/mmseq_overall_contigs_cluster.rename_map.merged.tsv -d Result/NCBI_4395_Batch/07_Network/transfer_network -o Result/NCBI_4395_Batch/07_Network/transfer_network/Annotation -k contig
   
   # For isolate_network (using GenomeID_standard, extracting genome ID from contig IDs)
-  python 217_annotate_nodes.py -m Result/NCBI_4395_Batch/07_Network/isolate_network/mmseq_overall_contigs_cluster.rename_map.merged.tsv -d Result/NCBI_4395_Batch/07_Network/isolate_network -o Result/NCBI_4395_Batch/07_Network/isolate_network/Annotation -k GenomeID_standard --extract-genome-id
+  python 219_annotate_network_nodes.py -m Result/NCBI_4395_Batch/07_Network/isolate_network/mmseq_overall_contigs_cluster.rename_map.merged.tsv -d Result/NCBI_4395_Batch/07_Network/isolate_network -o Result/NCBI_4395_Batch/07_Network/isolate_network/Annotation -k GenomeID_standard --extract-genome-id
         """
     )
     parser.add_argument('-m', '--merged', default=DEFAULT_MERGED,
@@ -65,7 +65,7 @@ Examples:
     
     # Step 2: Select columns to add
     columns_to_add = [
-        'new', 'Sample_ID', 'Contig_Type', 'Defense_Subtype',
+        'new', 'Sample_ID', 'GeNomad_Contig_Type', 'Defense_Subtype',
         'AntiDS_Type', 'AMR_Type', 'Host', 'Kingdom_CRBC', 'Phylum_CRBC',
         'Class_CRBC', 'Order_CRBC', 'Family_CRBC', 'Genus_CRBC',
         'Species_CRBC', 'Genus_CRBC_Updated', 'predicted_mobility',

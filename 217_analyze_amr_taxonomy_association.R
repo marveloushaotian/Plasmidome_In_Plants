@@ -4,7 +4,7 @@
 # Analyze AMR-Taxonomy Association
 # Description: Investigate which bacterial groups preferentially carry specific AMR genes
 # Methods: Chi-square test, enrichment analysis, heatmap visualization
-# Usage: Rscript 215_analyze_amr_taxonomy_association.R -c <coords.csv> -m <matrix.csv> -d <workdir> -o <output_prefix>
+# Usage: Rscript 217_analyze_amr_taxonomy_association.R -c <coords.csv> -m <matrix.csv> -d <workdir> -o <output_prefix>
 # =============================================================================
 
 DEFAULT_COORDS <- "Result/NCBI_4395_Batch/06_Cluter/amr_merge/01_coordinates/PCoA_AMR_Chromosome_coordinates.csv"
